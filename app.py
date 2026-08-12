@@ -461,8 +461,9 @@ def fetch_lottery_data(url):
             if parsed_date is not None:
                 current_date = parsed_date
 
+            # ปรับปรุง Regex เพื่อรองรับหวยไทย 6 ตัว และหวยอื่น 3 ตัว
             match = re.search(
-                r"\b(\d{3})\b.*?\b(\d{2})\b",
+                r"\b(\d{6}|\d{3})\b.*?\b(\d{2})\b",
                 line
             )
 
@@ -470,11 +471,14 @@ def fetch_lottery_data(url):
                 match
                 and current_date is not None
             ):
+                
+                raw_top = str(match.group(1))
 
                 extracted.append(
                     {
                         "Date": current_date,
-                        "Result_3D": match.group(1),
+                        # ตัดเอาเฉพาะ 3 ตัวท้ายเพื่อใช้งานในระบบ 3D
+                        "Result_3D": raw_top[-3:],
                         "Result_2D": match.group(2)
                     }
                 )
