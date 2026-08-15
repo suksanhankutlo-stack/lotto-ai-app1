@@ -160,10 +160,16 @@ def build_features(df):
         work[f"{pos}_IS_REPEAT"] = (shifted == s.shift(2)).astype(float)
         
         for d in [0, 2, 5, 7]: work[f"{pos}_GAP_{d}"] = gap_since_digit(s, d)
+        
+        # แก้ไขจุดที่อาจเกิด Walrus Operator Syntax Error ได้
         for w in [5, 10, 20]:
             counts = [(shifted == d).astype(float).rolling(w, min_periods=2).sum() for d in range(10)]
             total = shifted.rolling(w, min_periods=2).count().replace(0, np.nan)
-            work[f"{pos}_ENT{w}"] = sum(np.where((p:=c/total)>0, -p*np.log(p), 0.0) for c in counts)
+            entropy = pd.Series(0.0, index=work.index, dtype=float)
+            for c in counts:
+                p = c / total
+                entropy += np.where(p > 0, -p * np.log(p), 0.0)
+            work[f"{pos}_ENT{w}"] = entropy
 
     for lag in [1, 2, 3]:
         c = work[["H", "T", "O"]].shift(lag)
@@ -266,7 +272,11 @@ def final_prediction(df_feat, pos, config):
     res = train_and_predict(X.iloc[:-1], y.iloc[:-1], X.iloc[[-1]], config)
     ens, m_probs, sel_f = res if res else (np.ones(10)/10, {}, [])
     sorted_idx = np.argsort(ens)
-    agreements = [len(set(a).intersection(b))/5 for i, a in enumerate(ranks:=[np.argsort(p)[::-1][:5] for p in m_probs.values()]) for b in ranks[i+1:]] if len(m_probs) >= 2 else []
+    
+    # แก้ไขจุดที่เกิด Error Comprehension Iterable
+    ranks = [np.argsort(p)[::-1][:5] for p in m_probs.values()]
+    agreements = [len(set(a).intersection(b))/5 for i, a in enumerate(ranks) for b in ranks[i+1:]] if len(ranks) >= 2 else []
+    
     sel_model = max(m_probs.keys(), key=lambda k: np.sort(m_probs[k])[::-1][:3].sum()) if m_probs else "Ensemble"
     return {"model": sel_model, "weights": {k: 1/max(len(m_probs),1) for k in m_probs}, "model_probabilities": m_probs,
             "probabilities": ens, "hot": [(int(i), float(ens[i])) for i in sorted_idx[::-1][:5]], "dead": [(int(i), float(ens[i])) for i in sorted_idx[:7]],
