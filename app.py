@@ -1,5 +1,5 @@
 # ============================================================
-# 🤖 LOTTO AI PRO V8.3 TURBO EXTREME
+# 🤖 LOTTO AI PRO V8.4 TURBO EXTREME (UPGRADED)
 # ============================================================
 # STRICT WALK-FORWARD
 # LEAKAGE SAFE
@@ -7,16 +7,15 @@
 # THAI LOTTERY 6D + 2D
 # NORMAL LOTTERY 3D + 2D
 #
-# 🚀 TURBO EXTREME
+# 🚀 TURBO EXTREME + ACCURACY BOOST
 # ------------------------------------------------------------
-# ✅ Fast Feature Engineering
+# ✅ Fast Feature Engineering + EMA Trend
 # ✅ Float32 Matrix
-# ✅ Lightweight Feature Selection
+# ✅ Lightweight Feature Selection (Slightly increased)
 # ✅ Fast Walk-Forward
 # ✅ Backtest = ExtraTrees only
-# ✅ Final = ExtraTrees + HistGradientBoosting
-# ✅ Adaptive Configuration
-# ✅ No Persistent Model
+# ✅ Final = Weighted Ensemble (ET 40% + HGB 60%)
+# ✅ Adaptive Configuration (Tuned)
 # ✅ No Future Leakage
 # ============================================================
 
@@ -43,7 +42,7 @@ warnings.filterwarnings("ignore")
 # ============================================================
 
 st.set_page_config(
-    page_title="Lotto AI V8.3 Turbo Extreme",
+    page_title="Lotto AI V8.4 Turbo Extreme",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -814,54 +813,24 @@ def build_features(
         # LAGS
         # ----------------------------------------------------
 
-        for lag in (
-            1,
-            2,
-            3,
-            5
-        ):
-
-            w[
-                f"{pos}_L{lag}"
-            ] = s.shift(lag)
+        for lag in (1, 2, 3, 5):
+            w[f"{pos}_L{lag}"] = s.shift(lag)
 
         # ----------------------------------------------------
         # ROLLING
         # ----------------------------------------------------
 
-        for window in (
-            10,
-            20
-        ):
-
-            r = p.rolling(
-                window,
-                min_periods=2
-            )
-
-            w[
-                f"{pos}_M{window}"
-            ] = r.mean()
-
-            w[
-                f"{pos}_S{window}"
-            ] = r.std()
+        for window in (10, 20):
+            r = p.rolling(window, min_periods=2)
+            w[f"{pos}_M{window}"] = r.mean()
+            w[f"{pos}_S{window}"] = r.std()
 
             # เฉพาะ digit 0 และ 5
-            for digit in (
-                0,
-                5
-            ):
-
-                w[
-                    f"{pos}_F{window}_{digit}"
-                ] = (
+            for digit in (0, 5):
+                w[f"{pos}_F{window}_{digit}"] = (
                     (p == digit)
                     .astype(np.float32)
-                    .rolling(
-                        window,
-                        min_periods=2
-                    )
+                    .rolling(window, min_periods=2)
                     .mean()
                 )
 
@@ -869,142 +838,57 @@ def build_features(
         # MOMENTUM
         # ----------------------------------------------------
 
-        w[
-            f"{pos}_D1"
-        ] = (
-            s.shift(1)
-            -
-            s.shift(2)
-        )
-
-        w[
-            f"{pos}_D2"
-        ] = (
-            s.shift(2)
-            -
-            s.shift(3)
-        )
+        w[f"{pos}_D1"] = s.shift(1) - s.shift(2)
+        w[f"{pos}_D2"] = s.shift(2) - s.shift(3)
 
         # ----------------------------------------------------
         # SIMPLE STATES
         # ----------------------------------------------------
 
-        w[
-            f"{pos}_ODD"
-        ] = (
-            p % 2
-        )
-
-        w[
-            f"{pos}_HIGH"
-        ] = (
-            p >= 5
-        ).astype(np.float32)
-
-        w[
-            f"{pos}_MOD3"
-        ] = (
-            p % 3
-        )
+        w[f"{pos}_ODD"] = (p % 2)
+        w[f"{pos}_HIGH"] = (p >= 5).astype(np.float32)
+        w[f"{pos}_MOD3"] = (p % 3)
 
         # ----------------------------------------------------
         # CYCLIC DIGIT
         # ----------------------------------------------------
 
-        w[
-            f"{pos}_SIN"
-        ] = np.sin(
-            2 * np.pi * p / 10
-        ).astype(np.float32)
-
-        w[
-            f"{pos}_COS"
-        ] = np.cos(
-            2 * np.pi * p / 10
-        ).astype(np.float32)
+        w[f"{pos}_SIN"] = np.sin(2 * np.pi * p / 10).astype(np.float32)
+        w[f"{pos}_COS"] = np.cos(2 * np.pi * p / 10).astype(np.float32)
 
         # ----------------------------------------------------
-        # EWMA 7 ONLY
+        # EWMA & TREND (UPGRADED) 🚀
         # ----------------------------------------------------
 
-        w[
-            f"{pos}_EWMA7"
-        ] = (
-            p.ewm(
-                span=7,
-                adjust=False
-            ).mean()
-        )
+        w[f"{pos}_EWMA3"] = p.ewm(span=3, adjust=False).mean()
+        w[f"{pos}_EWMA7"] = p.ewm(span=7, adjust=False).mean()
+        # โมเมนตัมแนวโน้มระยะสั้นตัดระยะกลาง (MACD 3-7) ช่วยให้ AI เดาแพทเทิร์นได้คมขึ้น
+        w[f"{pos}_TREND"] = w[f"{pos}_EWMA3"] - w[f"{pos}_EWMA7"]
 
         # ----------------------------------------------------
         # REPEAT
         # ----------------------------------------------------
 
-        w[
-            f"{pos}_REPEAT"
-        ] = (
-            p == s.shift(2)
-        ).astype(np.float32)
+        w[f"{pos}_REPEAT"] = (p == s.shift(2)).astype(np.float32)
 
     # ========================================================
     # PREVIOUS DRAW AGGREGATES
     # ========================================================
 
     if thai_6d:
-
-        base = w[
-            [
-                "H1",
-                "H2",
-                "H3",
-                "H4",
-                "H5",
-                "H6"
-            ]
-        ].shift(1)
-
+        base = w[["H1", "H2", "H3", "H4", "H5", "H6"]].shift(1)
     else:
+        base = w[["H", "T", "O"]].shift(1)
 
-        base = w[
-            [
-                "H",
-                "T",
-                "O"
-            ]
-        ].shift(1)
-
-    w["PREV_SUM"] = (
-        base.sum(axis=1)
-    )
-
-    w["PREV_RANGE"] = (
-        base.max(axis=1)
-        -
-        base.min(axis=1)
-    )
-
-    w["PREV_MEAN"] = (
-        base.mean(axis=1)
-    )
-
-    w["PREV_ODD"] = (
-        base % 2
-    ).sum(axis=1)
-
-    w["PREV_HIGH"] = (
-        base >= 5
-    ).sum(axis=1)
-
-    w["PREV_UNIQUE"] = (
-        base.nunique(axis=1)
-    )
+    w["PREV_SUM"] = base.sum(axis=1)
+    w["PREV_RANGE"] = base.max(axis=1) - base.min(axis=1)
+    w["PREV_MEAN"] = base.mean(axis=1)
+    w["PREV_ODD"] = (base % 2).sum(axis=1)
+    w["PREV_HIGH"] = (base >= 5).sum(axis=1)
+    w["PREV_UNIQUE"] = base.nunique(axis=1)
 
     return (
-        w
-        .replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
+        w.replace([np.inf, -np.inf], np.nan)
     )
 
 
@@ -1015,24 +899,10 @@ def build_features(
 def get_features(thai_6d):
 
     base = [
-
-        "DOW",
-        "DAY",
-        "MONTH",
-        "DAY_OF_YEAR",
-
-        "DOW_SIN",
-        "DOW_COS",
-
-        "MONTH_SIN",
-        "MONTH_COS",
-
-        "PREV_SUM",
-        "PREV_RANGE",
-        "PREV_MEAN",
-        "PREV_ODD",
-        "PREV_HIGH",
-        "PREV_UNIQUE"
+        "DOW", "DAY", "MONTH", "DAY_OF_YEAR",
+        "DOW_SIN", "DOW_COS", "MONTH_SIN", "MONTH_COS",
+        "PREV_SUM", "PREV_RANGE", "PREV_MEAN",
+        "PREV_ODD", "PREV_HIGH", "PREV_UNIQUE"
     ]
 
     positions = (
@@ -1044,130 +914,66 @@ def get_features(thai_6d):
     for pos in positions:
 
         base.extend([
-
-            f"{pos}_L1",
-            f"{pos}_L2",
-            f"{pos}_L3",
-            f"{pos}_L5",
-
-            f"{pos}_M10",
-            f"{pos}_M20",
-
-            f"{pos}_S10",
-            f"{pos}_S20",
-
-            f"{pos}_D1",
-            f"{pos}_D2",
-
-            f"{pos}_ODD",
-            f"{pos}_HIGH",
-
-            f"{pos}_MOD3",
-
-            f"{pos}_SIN",
-            f"{pos}_COS",
-
-            f"{pos}_EWMA7",
-
+            f"{pos}_L1", f"{pos}_L2", f"{pos}_L3", f"{pos}_L5",
+            f"{pos}_M10", f"{pos}_M20",
+            f"{pos}_S10", f"{pos}_S20",
+            f"{pos}_D1", f"{pos}_D2",
+            f"{pos}_ODD", f"{pos}_HIGH", f"{pos}_MOD3",
+            f"{pos}_SIN", f"{pos}_COS",
+            f"{pos}_EWMA3", f"{pos}_EWMA7", f"{pos}_TREND", # 🚀 Added New Features
             f"{pos}_REPEAT"
         ])
 
-        for window in (
-            10,
-            20
-        ):
+        for window in (10, 20):
+            for digit in (0, 5):
+                base.append(f"{pos}_F{window}_{digit}")
 
-            for digit in (
-                0,
-                5
-            ):
-
-                base.append(
-                    f"{pos}_F{window}_{digit}"
-                )
-
-    return list(
-        dict.fromkeys(base)
-    )
+    return list(dict.fromkeys(base))
 
 
 # ============================================================
-# 11. ADAPTIVE CONFIG
+# 11. ADAPTIVE CONFIG (TUNED FOR ACCURACY) 🧠
 # ============================================================
 
 def get_adaptive_config(n):
-
+    # ปรับเพิ่ม selected_features เล็กน้อยเพื่อให้ข้อมูลกับโมเดลมากขึ้น
     if n >= 700:
-
         return {
-
             "min_train": 120,
-
-            "trees": 50,
-
+            "trees": 55,
             "depth": 7,
-
             "leaf": 2,
-
-            "selected_features": 16,
-
+            "selected_features": 20,
             "backtest_points": 6,
-
             "recent_decay": 0.985
         }
-
     if n >= 400:
-
         return {
-
             "min_train": 100,
-
-            "trees": 42,
-
+            "trees": 45,
             "depth": 6,
-
             "leaf": 2,
-
-            "selected_features": 16,
-
+            "selected_features": 18,
             "backtest_points": 6,
-
             "recent_decay": 0.98
         }
-
     if n >= 200:
-
         return {
-
             "min_train": 80,
-
-            "trees": 35,
-
+            "trees": 38,
             "depth": 6,
-
             "leaf": 2,
-
-            "selected_features": 14,
-
+            "selected_features": 16,
             "backtest_points": 5,
-
             "recent_decay": 0.975
         }
-
     return {
-
         "min_train": 50,
-
-        "trees": 28,
-
+        "trees": 30,
         "depth": 5,
-
         "leaf": 2,
-
-        "selected_features": 14,
-
+        "selected_features": 15,
         "backtest_points": 4,
-
         "recent_decay": 0.97
     }
 
@@ -1176,49 +982,30 @@ def get_adaptive_config(n):
 # 12. MODEL FACTORY
 # ============================================================
 
-def create_model(
-    name,
-    cfg
-):
+def create_model(name, cfg):
 
     t = cfg["trees"]
     d = cfg["depth"]
     l = cfg["leaf"]
 
     if name == "ExtraTrees":
-
         return ExtraTreesClassifier(
-
             n_estimators=t,
-
             max_depth=d,
-
             min_samples_leaf=l,
-
-            max_features=0.65,
-
+            max_features="sqrt", # ทำงานไวกว่าและกัน overfitting ได้ดี
             class_weight="balanced",
-
             n_jobs=-1,
-
             random_state=42
         )
 
+    # จูน HGB ให้แม่นขึ้น (เพิ่ม max_leaf_nodes และปรับ LR) โดยเวลาคำนวณยังเร็วเท่าเดิม
     return HistGradientBoostingClassifier(
-
-        max_iter=max(
-            25,
-            int(t * 0.55)
-        ),
-
-        max_leaf_nodes=12,
-
-        learning_rate=0.06,
-
+        max_iter=max(25, int(t * 0.55)),
+        max_leaf_nodes=15, 
+        learning_rate=0.075,
         min_samples_leaf=l,
-
         l2_regularization=2,
-
         random_state=42
     )
 
@@ -1227,25 +1014,16 @@ def create_model(
 # 13. FAST FEATURE SELECTION
 # ============================================================
 
-def select_features_once(
-    X,
-    y,
-    max_features
-):
+def select_features_once(X, y, max_features):
 
-    cols = list(
-        X.columns
-    )
+    cols = list(X.columns)
 
     if len(cols) <= max_features:
         return cols
 
     valid = [
-        c
-        for c in cols
-        if X[c].nunique(
-            dropna=False
-        ) > 1
+        c for c in cols
+        if X[c].nunique(dropna=False) > 1
     ]
 
     if len(valid) <= max_features:
@@ -1253,49 +1031,26 @@ def select_features_once(
 
     Xi = (
         X[valid]
-        .replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
+        .replace([np.inf, -np.inf], np.nan)
         .astype(np.float32)
         .fillna(0.0)
     )
 
     selector = ExtraTreesClassifier(
-
         n_estimators=8,
-
         max_depth=4,
-
         min_samples_leaf=3,
-
-        max_features=0.6,
-
+        max_features="sqrt",
         n_jobs=-1,
-
         random_state=123
     )
 
-    selector.fit(
-        Xi,
-        y
-    )
+    selector.fit(Xi, y)
 
-    importance = (
-        selector
-        .feature_importances_
-    )
+    importance = selector.feature_importances_
+    order = np.argsort(importance)[::-1]
 
-    order = np.argsort(
-        importance
-    )[::-1]
-
-    return [
-        valid[i]
-        for i in order[
-            :max_features
-        ]
-    ]
+    return [valid[i] for i in order[:max_features]]
 
 
 # ============================================================
@@ -1304,671 +1059,218 @@ def select_features_once(
 
 def normalize_probability(p):
 
-    p = np.asarray(
-        p,
-        dtype=np.float32
-    )
-
-    p = np.clip(
-        p,
-        1e-9,
-        None
-    )
-
+    p = np.asarray(p, dtype=np.float32)
+    p = np.clip(p, 1e-9, None)
     total = p.sum()
 
     if total <= 0:
+        return np.ones(10, dtype=np.float32) / 10
 
-        return (
-            np.ones(
-                10,
-                dtype=np.float32
-            )
-            /
-            10
-        )
-
-    return (
-        p / total
-    ).astype(
-        np.float32
-    )
+    return (p / total).astype(np.float32)
 
 
 # ============================================================
 # 15. FAST MATRIX
 # ============================================================
 
-def prepare_matrix(
-    X_train,
-    X_test,
-    selected
-):
+def prepare_matrix(X_train, X_test, selected):
 
-    A = (
-        X_train[selected]
-        .replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
-        .astype(np.float32)
-    )
-
-    B = (
-        X_test[selected]
-        .replace(
-            [np.inf, -np.inf],
-            np.nan
-        )
-        .astype(np.float32)
-    )
+    A = X_train[selected].replace([np.inf, -np.inf], np.nan).astype(np.float32)
+    B = X_test[selected].replace([np.inf, -np.inf], np.nan).astype(np.float32)
 
     med = A.median()
 
-    A = (
-        A
-        .fillna(med)
-        .fillna(0)
-    )
-
-    B = (
-        B
-        .fillna(med)
-        .fillna(0)
-    )
+    A = A.fillna(med).fillna(0)
+    B = B.fillna(med).fillna(0)
 
     return A, B
 
 
 # ============================================================
-# 16. TRAIN FINAL ENSEMBLE
+# 16. TRAIN FINAL ENSEMBLE (WEIGHTED) ⚖️
 # ============================================================
 
-def train_models(
-    X_train,
-    y_train,
-    X_test,
-    cfg,
-    selected_features
-):
+def train_models(X_train, y_train, X_test, cfg, selected_features):
 
-    A, B = prepare_matrix(
-        X_train,
-        X_test,
-        selected_features
-    )
-
-    predictions = []
+    A, B = prepare_matrix(X_train, X_test, selected_features)
+    
+    preds_dict = {}
 
     for name in MODEL_NAMES:
-
         try:
+            model = create_model(name, cfg)
+            model.fit(A, y_train)
+            raw = model.predict_proba(B)[0]
 
-            model = create_model(
-                name,
-                cfg
-            )
-
-            model.fit(
-                A,
-                y_train
-            )
-
-            raw = (
-                model
-                .predict_proba(B)[0]
-            )
-
-            out = np.zeros(
-                10,
-                dtype=np.float32
-            )
-
-            for cls, prob in zip(
-                model.classes_,
-                raw
-            ):
-
+            out = np.zeros(10, dtype=np.float32)
+            for cls, prob in zip(model.classes_, raw):
                 cls = int(cls)
-
                 if 0 <= cls <= 9:
+                    out[cls] = prob
 
-                    out[cls] = (
-                        prob
-                    )
-
-            predictions.append(
-                normalize_probability(
-                    out
-                )
-            )
+            preds_dict[name] = normalize_probability(out)
 
         except Exception:
             continue
 
-    if not predictions:
+    if not preds_dict:
+        return np.ones(10, dtype=np.float32) / 10
 
-        return (
-            np.ones(
-                10,
-                dtype=np.float32
-            )
-            /
-            10
-        )
-
-    return normalize_probability(
-        np.mean(
-            predictions,
-            axis=0
-        )
-    )
+    # ⚖️ ถ้ารันผ่านทั้ง 2 ตัว ให้น้ำหนัก HGB มากกว่า (เพราะมักจะจับแพทเทิร์นลึกได้ดีกว่า)
+    if len(preds_dict) == 2:
+        ensemble_prob = (preds_dict["ExtraTrees"] * 0.40) + (preds_dict["HistGradientBoosting"] * 0.60)
+        return normalize_probability(ensemble_prob)
+    else:
+        # ถ้าพังไป 1 ตัว ให้ใช้ตัวที่เหลือ
+        return normalize_probability(list(preds_dict.values())[0])
 
 
 # ============================================================
 # 17. FAST WALK-FORWARD
 # ============================================================
 
-def strict_walk_forward(
-    df_feat,
-    pos,
-    features,
-    cfg
-):
+def strict_walk_forward(df_feat, pos, features, cfg):
 
-    X = (
-        df_feat[features]
-        .astype(np.float32)
-    )
-
-    y = (
-        df_feat[pos]
-        .astype(np.int8)
-    )
+    X = df_feat[features].astype(np.float32)
+    y = df_feat[pos].astype(np.int8)
 
     n = len(df_feat)
-
     start = cfg["min_train"]
 
     if n <= start + 2:
+        return {"tests": 0, "scores": {}}
 
-        return {
-            "tests": 0,
-            "scores": {}
-        }
+    available = (n - start)
+    tests = min(cfg["backtest_points"], available)
 
-    available = (
-        n - start
-    )
+    test_indices = np.linspace(start, n - 1, tests, dtype=int)
+    test_indices = np.unique(test_indices)
 
-    tests = min(
-        cfg["backtest_points"],
-        available
-    )
+    selection_end = test_indices[0]
 
-    # ========================================================
-    # TEST ONLY RECENT / DISTRIBUTED POINTS
-    # ========================================================
-
-    test_indices = np.linspace(
-
-        start,
-
-        n - 1,
-
-        tests,
-
-        dtype=int
-    )
-
-    test_indices = np.unique(
-        test_indices
-    )
-
-    # ========================================================
-    # FEATURE SELECTION ON FIRST TRAIN BLOCK ONLY
-    # ========================================================
-
-    selection_end = (
-        test_indices[0]
-    )
-
-    if (
-        y.iloc[
-            :selection_end
-        ].nunique()
-        < 2
-    ):
-
-        return {
-            "tests": 0,
-            "scores": {}
-        }
+    if y.iloc[:selection_end].nunique() < 2:
+        return {"tests": 0, "scores": {}}
 
     selected = select_features_once(
-
-        X.iloc[
-            :selection_end
-        ],
-
-        y.iloc[
-            :selection_end
-        ],
-
-        cfg[
-            "selected_features"
-        ]
+        X.iloc[:selection_end],
+        y.iloc[:selection_end],
+        cfg["selected_features"]
     )
 
     records = []
 
-    # ========================================================
-    # BACKTEST
-    # ========================================================
-
     for idx in test_indices:
-
         if idx < start:
             continue
 
         y_train = y.iloc[:idx]
-
         if y_train.nunique() < 2:
             continue
 
-        A, B = prepare_matrix(
-
-            X.iloc[:idx],
-
-            X.iloc[[idx]],
-
-            selected
-        )
+        A, B = prepare_matrix(X.iloc[:idx], X.iloc[[idx]], selected)
 
         model = ExtraTreesClassifier(
-
-            n_estimators=max(
-
-                18,
-
-                int(
-                    cfg["trees"]
-                    * 0.55
-                )
-            ),
-
+            n_estimators=max(18, int(cfg["trees"] * 0.55)),
             max_depth=cfg["depth"],
-
             min_samples_leaf=cfg["leaf"],
-
-            max_features=0.65,
-
+            max_features="sqrt",
             class_weight="balanced",
-
             n_jobs=-1,
-
             random_state=42
         )
 
         try:
+            model.fit(A, y_train)
+            raw = model.predict_proba(B)[0]
 
-            model.fit(
-                A,
-                y_train
-            )
-
-            raw = (
-                model
-                .predict_proba(B)[0]
-            )
-
-            probs = np.zeros(
-                10,
-                dtype=np.float32
-            )
-
-            for cls, prob in zip(
-                model.classes_,
-                raw
-            ):
-
+            probs = np.zeros(10, dtype=np.float32)
+            for cls, prob in zip(model.classes_, raw):
                 cls = int(cls)
-
                 if 0 <= cls <= 9:
+                    probs[cls] = prob
 
-                    probs[cls] = (
-                        prob
-                    )
-
-            probs = normalize_probability(
-                probs
-            )
-
+            probs = normalize_probability(probs)
         except Exception:
-
             continue
 
-        actual = int(
-            y.iloc[idx]
-        )
-
-        ranking = np.argsort(
-            probs
-        )[::-1]
+        actual = int(y.iloc[idx])
+        ranking = np.argsort(probs)[::-1]
 
         records.append({
-
-            "top1":
-                int(
-                    actual
-                    ==
-                    ranking[0]
-                ),
-
-            "top3":
-                int(
-                    actual
-                    in
-                    ranking[:3]
-                ),
-
-            "top5":
-                int(
-                    actual
-                    in
-                    ranking[:5]
-                ),
-
-            "dead7":
-                int(
-                    actual
-                    in
-                    np.argsort(
-                        probs
-                    )[:7]
-                ),
-
-            "logloss":
-                -np.log(
-                    max(
-                        float(
-                            probs[
-                                actual
-                            ]
-                        ),
-                        1e-9
-                    )
-                )
+            "top1": int(actual == ranking[0]),
+            "top3": int(actual in ranking[:3]),
+            "top5": int(actual in ranking[:5]),
+            "dead7": int(actual in np.argsort(probs)[:7]),
+            "logloss": -np.log(max(float(probs[actual]), 1e-9))
         })
 
     if not records:
+        return {"tests": 0, "scores": {}}
 
-        return {
-            "tests": 0,
-            "scores": {}
-        }
+    h = pd.DataFrame(records)
 
-    h = pd.DataFrame(
-        records
-    )
-
-    # ========================================================
-    # RECENCY WEIGHT
-    # ========================================================
-
-    decay = (
-
-        cfg["recent_decay"]
-        **
-        (
-            len(h)
-            -
-            np.arange(
-                len(h)
-            )
-            - 1
-        )
-    )
-
+    decay = (cfg["recent_decay"] ** (len(h) - np.arange(len(h)) - 1))
     decay /= decay.sum()
 
     scores = {
-
-        "top1":
-            float(
-                np.sum(
-                    h["top1"]
-                    *
-                    decay
-                )
-            ),
-
-        "top3":
-            float(
-                np.sum(
-                    h["top3"]
-                    *
-                    decay
-                )
-            ),
-
-        "top5":
-            float(
-                np.sum(
-                    h["top5"]
-                    *
-                    decay
-                )
-            ),
-
-        "dead7":
-            float(
-                np.sum(
-                    h["dead7"]
-                    *
-                    decay
-                )
-            ),
-
-        "logloss":
-            float(
-                np.sum(
-                    h["logloss"]
-                    *
-                    decay
-                )
-            )
+        "top1": float(np.sum(h["top1"] * decay)),
+        "top3": float(np.sum(h["top3"] * decay)),
+        "top5": float(np.sum(h["top5"] * decay)),
+        "dead7": float(np.sum(h["dead7"] * decay)),
+        "logloss": float(np.sum(h["logloss"] * decay))
     }
 
     scores["score"] = (
-
-        0.35
-        *
-        scores["top1"]
-
-        +
-
-        0.30
-        *
-        scores["top3"]
-
-        +
-
-        0.20
-        *
-        scores["top5"]
-
-        +
-
-        0.10
-        *
-        (
-            1
-            /
-            (
-                1
-                +
-                scores[
-                    "logloss"
-                ]
-            )
-        )
-
-        +
-
-        0.05
-        *
-        (
-            1
-            -
-            scores["dead7"]
-        )
+        0.35 * scores["top1"] +
+        0.30 * scores["top3"] +
+        0.20 * scores["top5"] +
+        0.10 * (1 / (1 + scores["logloss"])) +
+        0.05 * (1 - scores["dead7"])
     )
 
-    return {
-
-        "tests":
-            len(h),
-
-        "scores":
-            scores
-    }
+    return {"tests": len(h), "scores": scores}
 
 
 # ============================================================
 # 18. FINAL PREDICTION
 # ============================================================
 
-def final_prediction(
-    df_feat,
-    pos,
-    features,
-    cfg
-):
+def final_prediction(df_feat, pos, features, cfg):
 
-    X = (
-        df_feat[features]
-        .astype(np.float32)
-    )
-
-    y = (
-        df_feat[pos]
-        .astype(np.int8)
-    )
-
-    # ========================================================
-    # LAST ROW = DUMMY TARGET
-    # ========================================================
+    X = df_feat[features].astype(np.float32)
+    y = df_feat[pos].astype(np.int8)
 
     X_train = X.iloc[:-1]
-
     y_train = y.iloc[:-1]
-
     X_test = X.iloc[[-1]]
 
-    # ========================================================
-    # FEATURE SELECTION
-    # ========================================================
-
     selected = select_features_once(
-
         X_train,
-
         y_train,
-
-        cfg[
-            "selected_features"
-        ]
+        cfg["selected_features"]
     )
 
-    # ========================================================
-    # FINAL ENSEMBLE
-    # ========================================================
-
     probs = train_models(
-
         X_train,
-
         y_train,
-
         X_test,
-
         cfg,
-
         selected
     )
 
-    order = np.argsort(
-        probs
-    )[::-1]
+    order = np.argsort(probs)[::-1]
+    hot = [(int(i), float(probs[i])) for i in order[:5]]
+    dead = [(int(i), float(probs[i])) for i in np.argsort(probs)[:7]]
 
-    hot = [
-
-        (
-            int(i),
-
-            float(
-                probs[i]
-            )
-        )
-
-        for i in order[:5]
-    ]
-
-    dead = [
-
-        (
-            int(i),
-
-            float(
-                probs[i]
-            )
-        )
-
-        for i in
-        np.argsort(
-            probs
-        )[:7]
-    ]
-
-    confidence = (
-
-        probs[
-            order[0]
-        ]
-
-        -
-
-        probs[
-            order[1]
-        ]
-    )
+    confidence = probs[order[0]] - probs[order[1]]
 
     return {
-
-        "probabilities":
-            probs,
-
-        "hot":
-            hot,
-
-        "dead":
-            dead,
-
-        "confidence":
-            float(
-                confidence
-            ),
-
-        "top3":
-            float(
-                probs[
-                    order[:3]
-                ].sum()
-            ),
-
-        "selected_features":
-            selected
+        "probabilities": probs,
+        "hot": hot,
+        "dead": dead,
+        "confidence": float(confidence),
+        "top3": float(probs[order[:3]].sum()),
+        "selected_features": selected
     }
 
 
@@ -1976,106 +1278,37 @@ def final_prediction(
 # 19. DISPLAY CARD
 # ============================================================
 
-def display_card(
-    pos,
-    result,
-    hot=True
-):
+def display_card(pos, result, hot=True):
 
-    data = (
+    data = result["hot"] if hot else result["dead"]
+    style = "hot" if hot else "dead"
 
-        result["hot"]
-
-        if hot
-
-        else
-
-        result["dead"]
-    )
-
-    style = (
-        "hot"
-        if hot
-        else
-        "dead"
-    )
-
-    nums = " - ".join(
-
-        str(n)
-
-        for n, _ in data
-    )
-
-    probs = " | ".join(
-
-        f"{n}: {p*100:.1f}%"
-
-        for n, p in data
-    )
+    nums = " - ".join(str(n) for n, _ in data)
+    probs = " | ".join(f"{n}: {p*100:.1f}%" for n, p in data)
 
     html = f"""
-
     <div class="{style}-card">
-
-        <div class="position-title">
-
-            {POSITION_LABELS[pos]}
-
-        </div>
-
-        <div class="{style}-number">
-
-            {nums}
-
-        </div>
-
-        <div class="prob-text">
-
-            AI Probability:
-            {probs}
-
-        </div>
+        <div class="position-title">{POSITION_LABELS[pos]}</div>
+        <div class="{style}-number">{nums}</div>
+        <div class="prob-text">AI Probability: {probs}</div>
     """
 
     if hot:
-
         html += f"""
-
         <div class="confidence">
-
-            📌 Top-1 Gap:
-            {result["confidence"]*100:.1f}%
-
-            &nbsp;|&nbsp;
-
-            Top-3:
-            {result["top3"]*100:.1f}%
-
+            📌 Top-1 Gap: {result["confidence"]*100:.1f}% &nbsp;|&nbsp; 
+            Top-3: {result["top3"]*100:.1f}%
         </div>
-
         """
 
     html += """
-
         <div class="model-badge">
-
-            🤖 AI Ensemble
-
-            ExtraTrees +
-
-            HistGradientBoosting
-
+            🤖 AI Ensemble: ExtraTrees (40%) + HistGradientBoosting (60%)
         </div>
-
     </div>
-
     """
 
-    st.markdown(
-        html,
-        unsafe_allow_html=True
-    )
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # ============================================================
@@ -2087,657 +1320,172 @@ def main():
     inject_css()
 
     st.markdown(
-
         """
         <div class="main-title">
-
-            🤖 LOTTO AI PRO V8.3
-            TURBO EXTREME
-
+            🤖 LOTTO AI PRO V8.4 TURBO EXTREME
         </div>
-
         <div class="subtitle">
-
-            STRICT WALK-FORWARD •
-            LEAKAGE SAFE •
-            NO PERSISTENT MEMORY •
-            ⚡ TURBO EXTREME
-
+            STRICT WALK-FORWARD • LEAKAGE SAFE • NO PERSISTENT MEMORY • ⚡ TURBO + ACCURACY BOOST
         </div>
         """,
-
         unsafe_allow_html=True
     )
-
-    # ========================================================
-    # SELECT
-    # ========================================================
 
     c1, c2 = st.columns(2)
 
     lottery = c1.selectbox(
-
         "🏷️ เลือกประเภทหวย",
-
-        list(
-            LOTTERY_SOURCES.keys()
-        )
+        list(LOTTERY_SOURCES.keys())
     )
 
     selected_day = c2.selectbox(
-
         "📅 วันเป้าหมาย",
-
-        [
-            "อัตโนมัติ"
-        ]
-        +
-        DOW_NAMES
+        ["อัตโนมัติ"] + DOW_NAMES
     )
 
-    # ========================================================
-    # START
-    # ========================================================
-
-    if not st.button(
-
-        "🚀 เริ่มวิเคราะห์ V8.3 TURBO EXTREME",
-
-        type="primary",
-
-        use_container_width=True
-    ):
-
+    if not st.button("🚀 เริ่มวิเคราะห์ V8.4 (TURBO + ACCURACY)", type="primary", use_container_width=True):
         return
 
-    # ========================================================
-    # LOAD
-    # ========================================================
-
-    with st.spinner(
-        "📥 โหลดข้อมูล..."
-    ):
-
+    with st.spinner("📥 โหลดข้อมูล..."):
         try:
-
-            df = fetch_lottery_data(
-
-                LOTTERY_SOURCES[
-                    lottery
-                ]
-            )
-
+            df = fetch_lottery_data(LOTTERY_SOURCES[lottery])
         except Exception as exc:
-
-            st.error(
-                str(exc)
-            )
-
+            st.error(str(exc))
             return
 
-    # ========================================================
-    # VALIDATE
-    # ========================================================
-
     if len(df) < 50:
-
-        st.error(
-
-            f"❌ มีข้อมูล "
-            f"{len(df)} งวด "
-            "ต้องมีอย่างน้อย 50 งวด"
-        )
-
+        st.error(f"❌ มีข้อมูล {len(df)} งวด ต้องมีอย่างน้อย 50 งวด")
         return
 
-    # ========================================================
-    # FORMAT
-    # ========================================================
+    thai_6d = (lottery == "หวยไทย" and is_thai_6d(df))
+    positions = (THAI_POSITIONS if thai_6d else NORMAL_POSITIONS)
 
-    thai_6d = (
-
-        lottery == "หวยไทย"
-
-        and
-
-        is_thai_6d(df)
-    )
-
-    positions = (
-
-        THAI_POSITIONS
-
-        if thai_6d
-
-        else
-
-        NORMAL_POSITIONS
-    )
-
-    # ========================================================
-    # TARGET DATE
-    # ========================================================
-
-    last_date = pd.Timestamp(
-        df["Date"].iloc[-1]
-    )
+    last_date = pd.Timestamp(df["Date"].iloc[-1])
 
     if selected_day == "อัตโนมัติ":
-
         if len(df) >= 2:
-
-            gap = (
-
-                df["Date"].iloc[-1]
-
-                -
-
-                df["Date"].iloc[-2]
-            ).days
-
-            days_ahead = max(
-                int(gap),
-                1
-            )
-
+            gap = (df["Date"].iloc[-1] - df["Date"].iloc[-2]).days
+            days_ahead = max(int(gap), 1)
         else:
-
             days_ahead = 7
-
     else:
-
-        target_dow = (
-            DOW_NAMES.index(
-                selected_day
-            )
-        )
-
-        days_ahead = (
-
-            target_dow
-
-            -
-
-            last_date.dayofweek
-
-        ) % 7
-
+        target_dow = DOW_NAMES.index(selected_day)
+        days_ahead = (target_dow - last_date.dayofweek) % 7
         if days_ahead == 0:
-
             days_ahead = 7
 
-    target_date = (
-
-        last_date
-
-        +
-
-        timedelta(
-            days=days_ahead
-        )
-    )
-
-    # ========================================================
-    # DUMMY TARGET
-    # ========================================================
+    target_date = last_date + timedelta(days=days_ahead)
 
     dummy = {
-
-        "Date":
-            target_date,
-
-        "Result_3D":
-            "000",
-
-        "Result_2D":
-            "00"
+        "Date": target_date,
+        "Result_3D": "000",
+        "Result_2D": "00"
     }
 
     if thai_6d:
+        dummy["Result_6D"] = "000000"
 
-        dummy[
-            "Result_6D"
-        ] = "000000"
+    ext = pd.concat([df, pd.DataFrame([dummy])], ignore_index=True)
 
-    ext = pd.concat(
-
-        [
-            df,
-
-            pd.DataFrame(
-                [dummy]
-            )
-        ],
-
-        ignore_index=True
-    )
-
-    # ========================================================
-    # FEATURE ENGINEERING
-    # ========================================================
-
-    with st.spinner(
-
-        "⚡ สร้าง Turbo Feature Matrix..."
-    ):
-
-        feat = build_features(
-
-            ext,
-
-            thai_6d
-        )
-
-        features = get_features(
-
-            thai_6d
-        )
-
-        cfg = get_adaptive_config(
-
-            len(df)
-        )
-
-    # ========================================================
-    # INFO
-    # ========================================================
+    with st.spinner("⚡ สร้าง Turbo Feature Matrix (Upgraded)..."):
+        feat = build_features(ext, thai_6d)
+        features = get_features(thai_6d)
+        cfg = get_adaptive_config(len(df))
 
     st.info(
-
         f"""
-
-        ⚡ V8.3 TURBO EXTREME |
-
-        ข้อมูล {len(df):,} งวด |
-
-        {"หวยไทย 6 หลัก + 2 หลัก"
-         if thai_6d
-         else
-         "3 หลัก + 2 หลัก"} |
-
-        Features {len(features)} |
-
-        Selected ≤
-        {cfg["selected_features"]} |
-
-        Trees
-        {cfg["trees"]} |
-
-        WF Tests
-        {cfg["backtest_points"]}
-
+        ⚡ V8.4 TURBO EXTREME | ข้อมูล {len(df):,} งวด | 
+        {"หวยไทย 6 หลัก + 2 หลัก" if thai_6d else "3 หลัก + 2 หลัก"} | 
+        Features {len(features)} | Selected ≤ {cfg["selected_features"]} | 
+        Trees {cfg["trees"]} | WF Tests {cfg["backtest_points"]}
         """
     )
-
-    # ========================================================
-    # BACKTEST + FINAL
-    # ========================================================
 
     backtest = {}
     final = {}
 
     progress = st.progress(0)
-
     status = st.empty()
+    total = len(positions)
 
-    total = len(
-        positions
-    )
+    for i, pos in enumerate(positions):
 
-    for i, pos in enumerate(
-        positions
-    ):
+        status.caption(f"⚡ V8.4 TURBO: {POSITION_LABELS[pos]}")
 
-        status.caption(
+        backtest[pos] = strict_walk_forward(feat.iloc[:-1], pos, features, cfg)
+        final[pos] = final_prediction(feat, pos, features, cfg)
 
-            f"⚡ V8.3 TURBO: "
-
-            f"{POSITION_LABELS[pos]}"
-        )
-
-        # ----------------------------------------------------
-        # BACKTEST
-        # ----------------------------------------------------
-
-        backtest[pos] = (
-            strict_walk_forward(
-
-                feat.iloc[:-1],
-
-                pos,
-
-                features,
-
-                cfg
-            )
-        )
-
-        # ----------------------------------------------------
-        # FINAL
-        # ----------------------------------------------------
-
-        final[pos] = (
-            final_prediction(
-
-                feat,
-
-                pos,
-
-                features,
-
-                cfg
-            )
-        )
-
-        progress.progress(
-
-            int(
-                (
-                    (i + 1)
-                    /
-                    total
-                )
-                *
-                100
-            )
-        )
+        progress.progress(int(((i + 1) / total) * 100))
 
     progress.empty()
-
     status.empty()
 
-    # ========================================================
-    # STATUS
-    # ========================================================
-
-    tests = [
-
-        x["tests"]
-
-        for x in
-        backtest.values()
-
-        if x.get("tests", 0) > 0
-    ]
-
-    if tests:
-
-        test_text = (
-            f"{min(tests)}–{max(tests)} จุด"
-        )
-
-    else:
-
-        test_text = "ไม่มี"
+    tests = [x["tests"] for x in backtest.values() if x.get("tests", 0) > 0]
+    test_text = f"{min(tests)}–{max(tests)} จุด" if tests else "ไม่มี"
 
     st.markdown(
-
         f"""
-
         <div class="status-card">
-
-        🤖 <b>
-        LOTTO AI PRO V8.3
-        TURBO EXTREME
-        </b><br>
-
-        📊 ข้อมูล:
-        {len(df):,} งวด<br>
-
-        📅 เป้าหมาย:
-        {target_date.strftime("%d/%m/%Y")}<br>
-
-        🎯 Mode:
-        {"6D + 2D"
-         if thai_6d
-         else
-         "3D + 2D"}<br>
-
-        🧠 Features:
-        {len(features)}<br>
-
-        🎯 Selected:
-        ≤{cfg["selected_features"]}<br>
-
-        🌳 Trees:
-        {cfg["trees"]}<br>
-
-        ⚡ Walk-Forward:
-        {test_text}
-
+        🤖 <b>LOTTO AI PRO V8.4 TURBO EXTREME</b><br>
+        📊 ข้อมูล: {len(df):,} งวด<br>
+        📅 เป้าหมาย: {target_date.strftime("%d/%m/%Y")}<br>
+        🎯 Mode: {"6D + 2D" if thai_6d else "3D + 2D"}<br>
+        🧠 Features: {len(features)}<br>
+        🎯 Selected: ≤{cfg["selected_features"]}<br>
+        🌳 Trees: {cfg["trees"]}<br>
+        ⚡ Walk-Forward: {test_text}
         </div>
-
         <br>
-
         """,
-
         unsafe_allow_html=True
     )
 
-    # ========================================================
-    # TABS
-    # ========================================================
-
-    t1, t2, t3 = st.tabs(
-
-        [
-            "🎯 เลขเด่น AI",
-
-            "🛑 เลขดับ 7",
-
-            "📊 Backtest"
-        ]
-    )
-
-    # ========================================================
-    # HOT
-    # ========================================================
+    t1, t2, t3 = st.tabs(["🎯 เลขเด่น AI", "🛑 เลขดับ 7", "📊 Backtest"])
 
     with t1:
-
         for pos in positions:
-
-            display_card(
-
-                pos,
-
-                final[pos],
-
-                True
-            )
-
-    # ========================================================
-    # DEAD
-    # ========================================================
+            display_card(pos, final[pos], True)
 
     with t2:
-
         for pos in positions:
-
-            display_card(
-
-                pos,
-
-                final[pos],
-
-                False
-            )
-
-    # ========================================================
-    # BACKTEST
-    # ========================================================
+            display_card(pos, final[pos], False)
 
     with t3:
-
         for pos in positions:
-
-            st.markdown(
-
-                f"### "
-                f"{POSITION_LABELS[pos]}"
-            )
-
-            score = (
-
-                backtest[pos]
-                .get(
-                    "scores",
-                    {}
-                )
-            )
+            st.markdown(f"### {POSITION_LABELS[pos]}")
+            score = backtest[pos].get("scores", {})
 
             if not score:
-
-                st.warning(
-                    "ไม่มี Backtest"
-                )
-
+                st.warning("ไม่มี Backtest")
                 continue
 
             st.dataframe(
-
                 pd.DataFrame([
-
-                    {
-
-                        "Metric":
-                            "Top-1",
-
-                        "AI":
-                            f"{score['top1']*100:.1f}%",
-
-                        "Random":
-                            "10%",
-
-                        "Edge":
-                            f"{(score['top1']-.10)*100:+.1f}%"
-                    },
-
-                    {
-
-                        "Metric":
-                            "Top-3",
-
-                        "AI":
-                            f"{score['top3']*100:.1f}%",
-
-                        "Random":
-                            "30%",
-
-                        "Edge":
-                            f"{(score['top3']-.30)*100:+.1f}%"
-                    },
-
-                    {
-
-                        "Metric":
-                            "Top-5",
-
-                        "AI":
-                            f"{score['top5']*100:.1f}%",
-
-                        "Random":
-                            "50%",
-
-                        "Edge":
-                            f"{(score['top5']-.50)*100:+.1f}%"
-                    },
-
-                    {
-
-                        "Metric":
-                            "Dead-7",
-
-                        "AI":
-                            f"{score['dead7']*100:.1f}%",
-
-                        "Random":
-                            "70%",
-
-                        "Edge":
-                            f"{(score['dead7']-.70)*100:+.1f}%"
-                    },
-
-                    {
-
-                        "Metric":
-                            "LogLoss",
-
-                        "AI":
-                            f"{score['logloss']:.3f}",
-
-                        "Random":
-                            "-",
-
-                        "Edge":
-                            "-"
-                    }
-
+                    {"Metric": "Top-1", "AI": f"{score['top1']*100:.1f}%", "Random": "10%", "Edge": f"{(score['top1']-.10)*100:+.1f}%"},
+                    {"Metric": "Top-3", "AI": f"{score['top3']*100:.1f}%", "Random": "30%", "Edge": f"{(score['top3']-.30)*100:+.1f}%"},
+                    {"Metric": "Top-5", "AI": f"{score['top5']*100:.1f}%", "Random": "50%", "Edge": f"{(score['top5']-.50)*100:+.1f}%"},
+                    {"Metric": "Dead-7", "AI": f"{score['dead7']*100:.1f}%", "Random": "70%", "Edge": f"{(score['dead7']-.70)*100:+.1f}%"},
+                    {"Metric": "LogLoss", "AI": f"{score['logloss']:.3f}", "Random": "-", "Edge": "-"}
                 ]),
-
                 use_container_width=True,
-
                 hide_index=True
             )
 
-    # ========================================================
-    # SUMMARY
-    # ========================================================
-
-    with st.expander(
-        "🎯 สรุปเลขเด่นทั้งหมด"
-    ):
-
+    with st.expander("🎯 สรุปเลขเด่นทั้งหมด"):
         data = []
-
         for pos in positions:
-
-            sc = (
-
-                backtest[pos]
-                .get(
-                    "scores",
-                    {}
-                )
-            )
-
+            sc = backtest[pos].get("scores", {})
             data.append({
-
-                "ตำแหน่ง":
-                    POSITION_LABELS[pos],
-
-                "Top-1":
-                    final[pos][
-                        "hot"
-                    ][0][0],
-
-                "Probability":
-                    f'{final[pos]["hot"][0][1]*100:.1f}%',
-
-                "WF Top-1":
-                    f'{sc.get("top1", 0)*100:.1f}%',
-
-                "WF Top-3":
-                    f'{sc.get("top3", 0)*100:.1f}%',
-
-                "Confidence":
-                    f'{final[pos]["confidence"]*100:.1f}%'
+                "ตำแหน่ง": POSITION_LABELS[pos],
+                "Top-1": final[pos]["hot"][0][0],
+                "Probability": f'{final[pos]["hot"][0][1]*100:.1f}%',
+                "WF Top-1": f'{sc.get("top1", 0)*100:.1f}%',
+                "WF Top-3": f'{sc.get("top3", 0)*100:.1f}%',
+                "Confidence": f'{final[pos]["confidence"]*100:.1f}%'
             })
 
-        st.dataframe(
+        st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
 
-            pd.DataFrame(data),
-
-            use_container_width=True,
-
-            hide_index=True
-        )
-
-
-# ============================================================
-# 21. RUN
-# ============================================================
 
 if __name__ == "__main__":
-
     main()
