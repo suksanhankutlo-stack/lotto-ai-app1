@@ -1,22 +1,45 @@
 # ============================================================
-# 🤖 LOTTO AI PRO V8.4 TURBO EXTREME (UPGRADED)
+# 🤖 LOTTO AI PRO V8.3.1 TURBO EXTREME
 # ============================================================
+# HOT TOP-3 + DEAD TOP-7 EDITION
+#
 # STRICT WALK-FORWARD
 # LEAKAGE SAFE
-# NO PERSISTENT MEMORY
+# NO PERSISTENT MODEL
 # THAI LOTTERY 6D + 2D
 # NORMAL LOTTERY 3D + 2D
 #
-# 🚀 TURBO EXTREME + ACCURACY BOOST
+# ============================================================
+# V8.3.1 FINAL UPDATE
+# ============================================================
+#
+# 🔥 HOT AI SYSTEM
 # ------------------------------------------------------------
-# ✅ Fast Feature Engineering + EMA Trend
-# ✅ Float32 Matrix
-# ✅ Lightweight Feature Selection (Slightly increased)
-# ✅ Fast Walk-Forward
-# ✅ Backtest = ExtraTrees only
-# ✅ Final = Weighted Ensemble (ET 40% + HGB 60%)
-# ✅ Adaptive Configuration (Tuned)
-# ✅ No Future Leakage
+# ✅ Independent Feature Selection
+# ✅ ExtraTrees + HistGradientBoosting
+# ✅ HOT TOP-3
+# ✅ Hot Probability
+# ✅ Hot Confidence
+# ✅ Hot Walk-Forward Backtest
+# ✅ Ranking-oriented HOT ensemble
+# ✅ Recent weighted training
+#
+# 🛑 DEAD AI SYSTEM
+# ------------------------------------------------------------
+# ✅ Independent Feature Selection
+# ✅ Separate Dead Scoring Pipeline
+# ✅ ExtraTrees + HistGradientBoosting
+# ✅ DEAD TOP-7
+# ✅ Dead Score
+# ✅ Dead Walk-Forward Backtest
+#
+# ⚡ TURBO
+# ------------------------------------------------------------
+# ✅ Float32
+# ✅ Lightweight Feature Selection
+# ✅ Limited Walk-Forward
+# ✅ Adaptive Configuration
+# ✅ No Persistent Model
 # ============================================================
 
 import re
@@ -29,6 +52,7 @@ import requests
 import streamlit as st
 
 from bs4 import BeautifulSoup
+
 from sklearn.ensemble import (
     ExtraTreesClassifier,
     HistGradientBoostingClassifier
@@ -42,7 +66,7 @@ warnings.filterwarnings("ignore")
 # ============================================================
 
 st.set_page_config(
-    page_title="Lotto AI V8.4 Turbo Extreme",
+    page_title="Lotto AI V8.3.1 Turbo Extreme",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -54,6 +78,7 @@ st.set_page_config(
 # ============================================================
 
 LOTTERY_SOURCES = {
+
     "หวยไทย":
         "https://suksan18190.blogspot.com/2026/07/blog-post_07.html",
 
@@ -245,6 +270,7 @@ def inject_css():
             text-align:center;
             color:#64748b;
             font-size:.8rem;
+            line-height:1.7;
         }
 
         .model-badge {
@@ -252,7 +278,7 @@ def inject_css():
             background:white;
             border-radius:9px;
             padding:6px;
-            margin-top:6px;
+            margin-top:7px;
             color:#475569;
             font-weight:700;
         }
@@ -262,6 +288,13 @@ def inject_css():
             font-size:.85rem;
             font-weight:800;
             margin-top:5px;
+        }
+
+        .system-title {
+            font-size:1.2rem;
+            font-weight:900;
+            margin-top:8px;
+            margin-bottom:4px;
         }
 
         div.stButton > button {
@@ -346,6 +379,7 @@ def normalize_date(value):
                 )
 
             except Exception:
+
                 return None
 
     match = re.search(
@@ -387,6 +421,7 @@ def normalize_date(value):
             )
 
         except Exception:
+
             pass
 
     return None
@@ -754,25 +789,10 @@ def build_features(
 
     dt = w["Date"].dt
 
-    w["DOW"] = (
-        dt.dayofweek
-        .astype(np.int8)
-    )
-
-    w["DAY"] = (
-        dt.day
-        .astype(np.int8)
-    )
-
-    w["MONTH"] = (
-        dt.month
-        .astype(np.int8)
-    )
-
-    w["DAY_OF_YEAR"] = (
-        dt.dayofyear
-        .astype(np.int16)
-    )
+    w["DOW"] = dt.dayofweek.astype(np.int8)
+    w["DAY"] = dt.day.astype(np.int8)
+    w["MONTH"] = dt.month.astype(np.int8)
+    w["DAY_OF_YEAR"] = dt.dayofyear.astype(np.int16)
 
     w["DOW_SIN"] = np.sin(
         2 * np.pi * w["DOW"] / 7
@@ -790,10 +810,6 @@ def build_features(
         2 * np.pi * w["MONTH"] / 12
     ).astype(np.float32)
 
-    # ========================================================
-    # POSITIONS
-    # ========================================================
-
     positions = (
         THAI_POSITIONS
         if thai_6d
@@ -801,7 +817,7 @@ def build_features(
     )
 
     # ========================================================
-    # FAST POSITION FEATURES
+    # POSITION FEATURES
     # ========================================================
 
     for pos in positions:
@@ -813,24 +829,53 @@ def build_features(
         # LAGS
         # ----------------------------------------------------
 
-        for lag in (1, 2, 3, 5):
-            w[f"{pos}_L{lag}"] = s.shift(lag)
+        for lag in (
+            1,
+            2,
+            3,
+            5
+        ):
+
+            w[f"{pos}_L{lag}"] = (
+                s.shift(lag)
+            )
 
         # ----------------------------------------------------
         # ROLLING
         # ----------------------------------------------------
 
-        for window in (10, 20):
-            r = p.rolling(window, min_periods=2)
-            w[f"{pos}_M{window}"] = r.mean()
-            w[f"{pos}_S{window}"] = r.std()
+        for window in (
+            10,
+            20
+        ):
 
-            # เฉพาะ digit 0 และ 5
-            for digit in (0, 5):
-                w[f"{pos}_F{window}_{digit}"] = (
+            r = p.rolling(
+                window,
+                min_periods=2
+            )
+
+            w[f"{pos}_M{window}"] = (
+                r.mean()
+            )
+
+            w[f"{pos}_S{window}"] = (
+                r.std()
+            )
+
+            for digit in (
+                0,
+                5
+            ):
+
+                w[
+                    f"{pos}_F{window}_{digit}"
+                ] = (
                     (p == digit)
                     .astype(np.float32)
-                    .rolling(window, min_periods=2)
+                    .rolling(
+                        window,
+                        min_periods=2
+                    )
                     .mean()
                 )
 
@@ -838,57 +883,120 @@ def build_features(
         # MOMENTUM
         # ----------------------------------------------------
 
-        w[f"{pos}_D1"] = s.shift(1) - s.shift(2)
-        w[f"{pos}_D2"] = s.shift(2) - s.shift(3)
+        w[f"{pos}_D1"] = (
+            s.shift(1)
+            -
+            s.shift(2)
+        )
+
+        w[f"{pos}_D2"] = (
+            s.shift(2)
+            -
+            s.shift(3)
+        )
 
         # ----------------------------------------------------
-        # SIMPLE STATES
+        # STATES
         # ----------------------------------------------------
 
-        w[f"{pos}_ODD"] = (p % 2)
-        w[f"{pos}_HIGH"] = (p >= 5).astype(np.float32)
-        w[f"{pos}_MOD3"] = (p % 3)
+        w[f"{pos}_ODD"] = (
+            p % 2
+        )
+
+        w[f"{pos}_HIGH"] = (
+            p >= 5
+        ).astype(np.float32)
+
+        w[f"{pos}_MOD3"] = (
+            p % 3
+        )
 
         # ----------------------------------------------------
         # CYCLIC DIGIT
         # ----------------------------------------------------
 
-        w[f"{pos}_SIN"] = np.sin(2 * np.pi * p / 10).astype(np.float32)
-        w[f"{pos}_COS"] = np.cos(2 * np.pi * p / 10).astype(np.float32)
+        w[f"{pos}_SIN"] = np.sin(
+            2 * np.pi * p / 10
+        ).astype(np.float32)
+
+        w[f"{pos}_COS"] = np.cos(
+            2 * np.pi * p / 10
+        ).astype(np.float32)
 
         # ----------------------------------------------------
-        # EWMA & TREND (UPGRADED) 🚀
+        # EWMA
         # ----------------------------------------------------
 
-        w[f"{pos}_EWMA3"] = p.ewm(span=3, adjust=False).mean()
-        w[f"{pos}_EWMA7"] = p.ewm(span=7, adjust=False).mean()
-        # โมเมนตัมแนวโน้มระยะสั้นตัดระยะกลาง (MACD 3-7) ช่วยให้ AI เดาแพทเทิร์นได้คมขึ้น
-        w[f"{pos}_TREND"] = w[f"{pos}_EWMA3"] - w[f"{pos}_EWMA7"]
+        w[f"{pos}_EWMA7"] = (
+            p.ewm(
+                span=7,
+                adjust=False
+            ).mean()
+        )
 
         # ----------------------------------------------------
         # REPEAT
         # ----------------------------------------------------
 
-        w[f"{pos}_REPEAT"] = (p == s.shift(2)).astype(np.float32)
+        w[f"{pos}_REPEAT"] = (
+            p == s.shift(2)
+        ).astype(np.float32)
 
     # ========================================================
     # PREVIOUS DRAW AGGREGATES
     # ========================================================
 
     if thai_6d:
-        base = w[["H1", "H2", "H3", "H4", "H5", "H6"]].shift(1)
+
+        base = w[
+            [
+                "H1",
+                "H2",
+                "H3",
+                "H4",
+                "H5",
+                "H6"
+            ]
+        ].shift(1)
+
     else:
-        base = w[["H", "T", "O"]].shift(1)
+
+        base = w[
+            [
+                "H",
+                "T",
+                "O"
+            ]
+        ].shift(1)
 
     w["PREV_SUM"] = base.sum(axis=1)
-    w["PREV_RANGE"] = base.max(axis=1) - base.min(axis=1)
+
+    w["PREV_RANGE"] = (
+        base.max(axis=1)
+        -
+        base.min(axis=1)
+    )
+
     w["PREV_MEAN"] = base.mean(axis=1)
-    w["PREV_ODD"] = (base % 2).sum(axis=1)
-    w["PREV_HIGH"] = (base >= 5).sum(axis=1)
-    w["PREV_UNIQUE"] = base.nunique(axis=1)
+
+    w["PREV_ODD"] = (
+        base % 2
+    ).sum(axis=1)
+
+    w["PREV_HIGH"] = (
+        base >= 5
+    ).sum(axis=1)
+
+    w["PREV_UNIQUE"] = (
+        base.nunique(axis=1)
+    )
 
     return (
-        w.replace([np.inf, -np.inf], np.nan)
+        w
+        .replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
     )
 
 
@@ -899,10 +1007,24 @@ def build_features(
 def get_features(thai_6d):
 
     base = [
-        "DOW", "DAY", "MONTH", "DAY_OF_YEAR",
-        "DOW_SIN", "DOW_COS", "MONTH_SIN", "MONTH_COS",
-        "PREV_SUM", "PREV_RANGE", "PREV_MEAN",
-        "PREV_ODD", "PREV_HIGH", "PREV_UNIQUE"
+
+        "DOW",
+        "DAY",
+        "MONTH",
+        "DAY_OF_YEAR",
+
+        "DOW_SIN",
+        "DOW_COS",
+
+        "MONTH_SIN",
+        "MONTH_COS",
+
+        "PREV_SUM",
+        "PREV_RANGE",
+        "PREV_MEAN",
+        "PREV_ODD",
+        "PREV_HIGH",
+        "PREV_UNIQUE"
     ]
 
     positions = (
@@ -914,67 +1036,143 @@ def get_features(thai_6d):
     for pos in positions:
 
         base.extend([
-            f"{pos}_L1", f"{pos}_L2", f"{pos}_L3", f"{pos}_L5",
-            f"{pos}_M10", f"{pos}_M20",
-            f"{pos}_S10", f"{pos}_S20",
-            f"{pos}_D1", f"{pos}_D2",
-            f"{pos}_ODD", f"{pos}_HIGH", f"{pos}_MOD3",
-            f"{pos}_SIN", f"{pos}_COS",
-            f"{pos}_EWMA3", f"{pos}_EWMA7", f"{pos}_TREND", # 🚀 Added New Features
+
+            f"{pos}_L1",
+            f"{pos}_L2",
+            f"{pos}_L3",
+            f"{pos}_L5",
+
+            f"{pos}_M10",
+            f"{pos}_M20",
+
+            f"{pos}_S10",
+            f"{pos}_S20",
+
+            f"{pos}_D1",
+            f"{pos}_D2",
+
+            f"{pos}_ODD",
+            f"{pos}_HIGH",
+
+            f"{pos}_MOD3",
+
+            f"{pos}_SIN",
+            f"{pos}_COS",
+
+            f"{pos}_EWMA7",
+
             f"{pos}_REPEAT"
         ])
 
-        for window in (10, 20):
-            for digit in (0, 5):
-                base.append(f"{pos}_F{window}_{digit}")
+        for window in (
+            10,
+            20
+        ):
 
-    return list(dict.fromkeys(base))
+            for digit in (
+                0,
+                5
+            ):
+
+                base.append(
+                    f"{pos}_F{window}_{digit}"
+                )
+
+    return list(
+        dict.fromkeys(base)
+    )
 
 
 # ============================================================
-# 11. ADAPTIVE CONFIG (TUNED FOR ACCURACY) 🧠
+# 11. ADAPTIVE CONFIG
 # ============================================================
 
 def get_adaptive_config(n):
-    # ปรับเพิ่ม selected_features เล็กน้อยเพื่อให้ข้อมูลกับโมเดลมากขึ้น
+
     if n >= 700:
+
         return {
+
             "min_train": 120,
-            "trees": 55,
+
+            # เพิ่ม trees สำหรับ HOT
+            # เพื่อให้ ranking เสถียรขึ้น
+            "trees": 60,
+
             "depth": 7,
+
             "leaf": 2,
-            "selected_features": 20,
+
+            # HOT ใช้ feature มากขึ้นเล็กน้อย
+            "hot_features": 20,
+
+            # DEAD แยก pipeline
+            "dead_features": 16,
+
             "backtest_points": 6,
+
             "recent_decay": 0.985
         }
+
     if n >= 400:
+
         return {
+
             "min_train": 100,
-            "trees": 45,
+
+            "trees": 50,
+
             "depth": 6,
+
             "leaf": 2,
-            "selected_features": 18,
+
+            "hot_features": 20,
+
+            "dead_features": 16,
+
             "backtest_points": 6,
-            "recent_decay": 0.98
+
+            "recent_decay": 0.980
         }
+
     if n >= 200:
+
         return {
+
             "min_train": 80,
-            "trees": 38,
+
+            "trees": 42,
+
             "depth": 6,
+
             "leaf": 2,
-            "selected_features": 16,
+
+            "hot_features": 18,
+
+            "dead_features": 15,
+
             "backtest_points": 5,
+
             "recent_decay": 0.975
         }
+
     return {
+
         "min_train": 50,
-        "trees": 30,
+
+        "trees": 32,
+
         "depth": 5,
+
         "leaf": 2,
-        "selected_features": 15,
+
+        "hot_features": 16,
+
+        "dead_features": 14,
+
         "backtest_points": 4,
-        "recent_decay": 0.97
+
+        "recent_decay": 0.970
     }
 
 
@@ -982,48 +1180,140 @@ def get_adaptive_config(n):
 # 12. MODEL FACTORY
 # ============================================================
 
-def create_model(name, cfg):
+def create_model(
+    name,
+    cfg,
+    system="hot"
+):
 
     t = cfg["trees"]
     d = cfg["depth"]
     l = cfg["leaf"]
 
-    if name == "ExtraTrees":
-        return ExtraTreesClassifier(
-            n_estimators=t,
-            max_depth=d,
+    # ========================================================
+    # HOT
+    # ========================================================
+
+    if system == "hot":
+
+        if name == "ExtraTrees":
+
+            return ExtraTreesClassifier(
+
+                n_estimators=t,
+
+                max_depth=d,
+
+                min_samples_leaf=l,
+
+                max_features=0.75,
+
+                class_weight="balanced_subsample",
+
+                n_jobs=-1,
+
+                random_state=42
+            )
+
+        return HistGradientBoostingClassifier(
+
+            max_iter=max(
+                30,
+                int(t * 0.65)
+            ),
+
+            max_leaf_nodes=15,
+
+            learning_rate=0.055,
+
             min_samples_leaf=l,
-            max_features="sqrt", # ทำงานไวกว่าและกัน overfitting ได้ดี
-            class_weight="balanced",
-            n_jobs=-1,
+
+            l2_regularization=1.5,
+
             random_state=42
         )
 
-    # จูน HGB ให้แม่นขึ้น (เพิ่ม max_leaf_nodes และปรับ LR) โดยเวลาคำนวณยังเร็วเท่าเดิม
+    # ========================================================
+    # DEAD
+    # ========================================================
+
+    if name == "ExtraTrees":
+
+        return ExtraTreesClassifier(
+
+            n_estimators=max(
+                25,
+                int(t * 0.90)
+            ),
+
+            max_depth=max(
+                4,
+                d - 1
+            ),
+
+            min_samples_leaf=max(
+                2,
+                l
+            ),
+
+            max_features=0.50,
+
+            class_weight="balanced_subsample",
+
+            n_jobs=-1,
+
+            random_state=91
+        )
+
     return HistGradientBoostingClassifier(
-        max_iter=max(25, int(t * 0.55)),
-        max_leaf_nodes=15, 
-        learning_rate=0.075,
-        min_samples_leaf=l,
-        l2_regularization=2,
-        random_state=42
+
+        max_iter=max(
+            25,
+            int(t * 0.50)
+        ),
+
+        max_leaf_nodes=9,
+
+        learning_rate=0.05,
+
+        min_samples_leaf=max(
+            2,
+            l
+        ),
+
+        l2_regularization=4,
+
+        random_state=91
     )
 
 
 # ============================================================
-# 13. FAST FEATURE SELECTION
+# 13. FEATURE SELECTION
 # ============================================================
 
-def select_features_once(X, y, max_features):
+def select_features_once(
+    X,
+    y,
+    max_features,
+    system="hot"
+):
 
-    cols = list(X.columns)
+    cols = list(
+        X.columns
+    )
 
     if len(cols) <= max_features:
         return cols
 
     valid = [
-        c for c in cols
-        if X[c].nunique(dropna=False) > 1
+
+        c
+
+        for c in cols
+
+        if X[c].nunique(
+            dropna=False
+        ) > 1
     ]
 
     if len(valid) <= max_features:
@@ -1031,288 +1321,1252 @@ def select_features_once(X, y, max_features):
 
     Xi = (
         X[valid]
-        .replace([np.inf, -np.inf], np.nan)
+        .replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
         .astype(np.float32)
         .fillna(0.0)
     )
 
+    if system == "hot":
+
+        seed = 123
+
+        trees = 12
+
+        depth = 5
+
+    else:
+
+        seed = 321
+
+        trees = 9
+
+        depth = 4
+
     selector = ExtraTreesClassifier(
-        n_estimators=8,
-        max_depth=4,
+
+        n_estimators=trees,
+
+        max_depth=depth,
+
         min_samples_leaf=3,
-        max_features="sqrt",
+
+        max_features=0.70,
+
         n_jobs=-1,
-        random_state=123
+
+        random_state=seed
     )
 
-    selector.fit(Xi, y)
+    selector.fit(
+        Xi,
+        y
+    )
 
-    importance = selector.feature_importances_
-    order = np.argsort(importance)[::-1]
+    importance = (
+        selector
+        .feature_importances_
+    )
 
-    return [valid[i] for i in order[:max_features]]
+    order = np.argsort(
+        importance
+    )[::-1]
+
+    return [
+
+        valid[i]
+
+        for i in order[
+            :max_features
+        ]
+
+    ]
 
 
 # ============================================================
-# 14. PROBABILITY
+# 14. NORMALIZE
 # ============================================================
 
 def normalize_probability(p):
 
-    p = np.asarray(p, dtype=np.float32)
-    p = np.clip(p, 1e-9, None)
+    p = np.asarray(
+        p,
+        dtype=np.float32
+    )
+
+    p = np.nan_to_num(
+        p,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0
+    )
+
+    p = np.clip(
+        p,
+        1e-9,
+        None
+    )
+
     total = p.sum()
 
     if total <= 0:
-        return np.ones(10, dtype=np.float32) / 10
 
-    return (p / total).astype(np.float32)
+        return (
+            np.ones(
+                10,
+                dtype=np.float32
+            )
+            / 10
+        )
+
+    return (
+        p / total
+    ).astype(
+        np.float32
+    )
 
 
 # ============================================================
-# 15. FAST MATRIX
+# 15. MATRIX
 # ============================================================
 
-def prepare_matrix(X_train, X_test, selected):
+def prepare_matrix(
+    X_train,
+    X_test,
+    selected
+):
 
-    A = X_train[selected].replace([np.inf, -np.inf], np.nan).astype(np.float32)
-    B = X_test[selected].replace([np.inf, -np.inf], np.nan).astype(np.float32)
+    A = (
+        X_train[selected]
+        .replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
+        .astype(np.float32)
+    )
+
+    B = (
+        X_test[selected]
+        .replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
+        .astype(np.float32)
+    )
 
     med = A.median()
 
-    A = A.fillna(med).fillna(0)
-    B = B.fillna(med).fillna(0)
+    A = (
+        A
+        .fillna(med)
+        .fillna(0.0)
+    )
+
+    B = (
+        B
+        .fillna(med)
+        .fillna(0.0)
+    )
 
     return A, B
 
 
 # ============================================================
-# 16. TRAIN FINAL ENSEMBLE (WEIGHTED) ⚖️
+# 16. RECENT SAMPLE WEIGHTS
 # ============================================================
 
-def train_models(X_train, y_train, X_test, cfg, selected_features):
+def make_sample_weights(
+    n,
+    decay
+):
 
-    A, B = prepare_matrix(X_train, X_test, selected_features)
-    
-    preds_dict = {}
+    if n <= 0:
+        return None
+
+    age = (
+        np.arange(n - 1, -1, -1)
+        .astype(np.float32)
+    )
+
+    weights = (
+        decay ** age
+    )
+
+    weights /= (
+        np.mean(weights)
+        + 1e-9
+    )
+
+    return weights.astype(
+        np.float32
+    )
+
+
+# ============================================================
+# 17. MODEL PROBABILITY
+# ============================================================
+
+def model_probability(
+    X_train,
+    y_train,
+    X_test,
+    cfg,
+    selected,
+    system
+):
+
+    A, B = prepare_matrix(
+        X_train,
+        X_test,
+        selected
+    )
+
+    predictions = []
+
+    sample_weights = (
+        make_sample_weights(
+            len(A),
+            cfg["recent_decay"]
+        )
+    )
 
     for name in MODEL_NAMES:
+
         try:
-            model = create_model(name, cfg)
-            model.fit(A, y_train)
-            raw = model.predict_proba(B)[0]
 
-            out = np.zeros(10, dtype=np.float32)
-            for cls, prob in zip(model.classes_, raw):
+            model = create_model(
+                name,
+                cfg,
+                system
+            )
+
+            # ------------------------------------------------
+            # ExtraTrees รองรับ sample_weight
+            # HGB รองรับ sample_weight ในเวอร์ชัน sklearn
+            # ที่ใช้ทั่วไป
+            # ------------------------------------------------
+
+            try:
+
+                model.fit(
+                    A,
+                    y_train,
+                    sample_weight=sample_weights
+                )
+
+            except TypeError:
+
+                model.fit(
+                    A,
+                    y_train
+                )
+
+            raw = (
+                model
+                .predict_proba(B)[0]
+            )
+
+            out = np.zeros(
+                10,
+                dtype=np.float32
+            )
+
+            for cls, prob in zip(
+                model.classes_,
+                raw
+            ):
+
                 cls = int(cls)
-                if 0 <= cls <= 9:
-                    out[cls] = prob
 
-            preds_dict[name] = normalize_probability(out)
+                if 0 <= cls <= 9:
+
+                    out[cls] = (
+                        prob
+                    )
+
+            predictions.append(
+                normalize_probability(
+                    out
+                )
+            )
 
         except Exception:
+
             continue
 
-    if not preds_dict:
-        return np.ones(10, dtype=np.float32) / 10
+    if not predictions:
 
-    # ⚖️ ถ้ารันผ่านทั้ง 2 ตัว ให้น้ำหนัก HGB มากกว่า (เพราะมักจะจับแพทเทิร์นลึกได้ดีกว่า)
-    if len(preds_dict) == 2:
-        ensemble_prob = (preds_dict["ExtraTrees"] * 0.40) + (preds_dict["HistGradientBoosting"] * 0.60)
-        return normalize_probability(ensemble_prob)
+        return (
+            np.ones(
+                10,
+                dtype=np.float32
+            )
+            / 10
+        )
+
+    # ========================================================
+    # HOT MODEL ENSEMBLE
+    # --------------------------------------------------------
+    # ให้ ExtraTrees สูงกว่าเล็กน้อย
+    # เพราะเหมาะกับ nonlinear ranking
+    # ========================================================
+
+    if system == "hot":
+
+        if len(predictions) == 2:
+
+            ensemble = (
+
+                predictions[0]
+                * 0.58
+
+                +
+
+                predictions[1]
+                * 0.42
+            )
+
+        else:
+
+            ensemble = np.mean(
+                predictions,
+                axis=0
+            )
+
+    # ========================================================
+    # DEAD MODEL ENSEMBLE
+    # ========================================================
+
     else:
-        # ถ้าพังไป 1 ตัว ให้ใช้ตัวที่เหลือ
-        return normalize_probability(list(preds_dict.values())[0])
+
+        if len(predictions) == 2:
+
+            ensemble = (
+
+                predictions[0]
+                * 0.52
+
+                +
+
+                predictions[1]
+                * 0.48
+            )
+
+        else:
+
+            ensemble = np.mean(
+                predictions,
+                axis=0
+            )
+
+    return normalize_probability(
+        ensemble
+    )
 
 
 # ============================================================
-# 17. FAST WALK-FORWARD
+# 18. HOT SYSTEM
 # ============================================================
 
-def strict_walk_forward(df_feat, pos, features, cfg):
+def hot_system(
+    X_train,
+    y_train,
+    X_test,
+    cfg
+):
 
-    X = df_feat[features].astype(np.float32)
-    y = df_feat[pos].astype(np.int8)
+    selected = select_features_once(
+
+        X_train,
+
+        y_train,
+
+        cfg["hot_features"],
+
+        system="hot"
+    )
+
+    probability = model_probability(
+
+        X_train,
+
+        y_train,
+
+        X_test,
+
+        cfg,
+
+        selected,
+
+        system="hot"
+    )
+
+    # ========================================================
+    # HOT RANKING BOOST
+    # ========================================================
+    #
+    # ใช้ probability ตรง ๆ เป็นหลัก
+    # แล้ว sharpen เล็กน้อยเพื่อเน้นอันดับบน
+    # ไม่สร้างเลขจากภายนอก
+    # ========================================================
+
+    hot_prob = np.power(
+        probability,
+        1.08
+    )
+
+    hot_prob = normalize_probability(
+        hot_prob
+    )
+
+    order = np.argsort(
+        hot_prob
+    )[::-1
+    ]
+
+    hot = [
+
+        (
+            int(n),
+
+            float(
+                hot_prob[n]
+            )
+        )
+
+        for n in order[:3]
+    ]
+
+    if len(order) >= 2:
+
+        confidence = (
+
+            hot_prob[order[0]]
+
+            -
+
+            hot_prob[order[1]]
+        )
+
+    else:
+
+        confidence = 0.0
+
+    return {
+
+        "probability":
+            hot_prob,
+
+        "hot":
+            hot,
+
+        "confidence":
+            float(
+                confidence
+            ),
+
+        "top3":
+            float(
+                hot_prob[
+                    order[:3]
+                ].sum()
+            ),
+
+        "selected_features":
+            selected
+    }
+
+
+# ============================================================
+# 19. DEAD SYSTEM
+# ============================================================
+
+def dead_system(
+    X_train,
+    y_train,
+    X_test,
+    cfg
+):
+
+    selected = select_features_once(
+
+        X_train,
+
+        y_train,
+
+        cfg["dead_features"],
+
+        system="dead"
+    )
+
+    probability = model_probability(
+
+        X_train,
+
+        y_train,
+
+        X_test,
+
+        cfg,
+
+        selected,
+
+        system="dead"
+    )
+
+    # ========================================================
+    # DEAD SCORE
+    # ========================================================
+
+    dead_score = (
+        1.0
+        -
+        probability
+    ).astype(
+        np.float32
+    )
+
+    dead_score = normalize_probability(
+        dead_score
+    )
+
+    order = np.argsort(
+        dead_score
+    )[::-1]
+
+    # ========================================================
+    # V8.3.1
+    # DEAD TOP-7
+    # ========================================================
+
+    dead = [
+
+        (
+            int(n),
+
+            float(
+                dead_score[n]
+            )
+        )
+
+        for n in order[:7]
+    ]
+
+    return {
+
+        "probability":
+            probability,
+
+        "dead_score":
+            dead_score,
+
+        "dead":
+            dead,
+
+        "top7":
+            float(
+                dead_score[
+                    order[:7]
+                ].sum()
+            ),
+
+        "selected_features":
+            selected
+    }
+
+
+# ============================================================
+# 20. HOT WALK-FORWARD
+# ============================================================
+
+def hot_walk_forward(
+    df_feat,
+    pos,
+    features,
+    cfg
+):
+
+    return walk_forward_system(
+
+        df_feat,
+
+        pos,
+
+        features,
+
+        cfg,
+
+        system="hot"
+    )
+
+
+# ============================================================
+# 21. DEAD WALK-FORWARD
+# ============================================================
+
+def dead_walk_forward(
+    df_feat,
+    pos,
+    features,
+    cfg
+):
+
+    return walk_forward_system(
+
+        df_feat,
+
+        pos,
+
+        features,
+
+        cfg,
+
+        system="dead"
+    )
+
+
+# ============================================================
+# 22. GENERIC WALK-FORWARD
+# ============================================================
+
+def walk_forward_system(
+    df_feat,
+    pos,
+    features,
+    cfg,
+    system="hot"
+):
+
+    X = (
+        df_feat[features]
+        .astype(np.float32)
+    )
+
+    y = (
+        df_feat[pos]
+        .astype(np.int8)
+    )
 
     n = len(df_feat)
+
     start = cfg["min_train"]
 
     if n <= start + 2:
-        return {"tests": 0, "scores": {}}
 
-    available = (n - start)
-    tests = min(cfg["backtest_points"], available)
+        return {
 
-    test_indices = np.linspace(start, n - 1, tests, dtype=int)
-    test_indices = np.unique(test_indices)
+            "tests": 0,
 
-    selection_end = test_indices[0]
+            "scores": {}
+        }
 
-    if y.iloc[:selection_end].nunique() < 2:
-        return {"tests": 0, "scores": {}}
+    available = n - start
+
+    tests = min(
+        cfg["backtest_points"],
+        available
+    )
+
+    test_indices = np.linspace(
+
+        start,
+
+        n - 1,
+
+        tests,
+
+        dtype=int
+    )
+
+    test_indices = np.unique(
+        test_indices
+    )
+
+    # ========================================================
+    # FEATURE SELECTION
+    # ========================================================
+
+    selection_end = int(
+        test_indices[0]
+    )
+
+    if (
+        y.iloc[
+            :selection_end
+        ].nunique()
+        < 2
+    ):
+
+        return {
+
+            "tests": 0,
+
+            "scores": {}
+        }
+
+    max_features = (
+
+        cfg["hot_features"]
+
+        if system == "hot"
+
+        else
+
+        cfg["dead_features"]
+    )
 
     selected = select_features_once(
+
         X.iloc[:selection_end],
+
         y.iloc[:selection_end],
-        cfg["selected_features"]
+
+        max_features,
+
+        system=system
     )
 
     records = []
 
+    # ========================================================
+    # TEST
+    # ========================================================
+
     for idx in test_indices:
+
         if idx < start:
             continue
 
         y_train = y.iloc[:idx]
+
         if y_train.nunique() < 2:
             continue
 
-        A, B = prepare_matrix(X.iloc[:idx], X.iloc[[idx]], selected)
-
-        model = ExtraTreesClassifier(
-            n_estimators=max(18, int(cfg["trees"] * 0.55)),
-            max_depth=cfg["depth"],
-            min_samples_leaf=cfg["leaf"],
-            max_features="sqrt",
-            class_weight="balanced",
-            n_jobs=-1,
-            random_state=42
-        )
-
         try:
-            model.fit(A, y_train)
-            raw = model.predict_proba(B)[0]
 
-            probs = np.zeros(10, dtype=np.float32)
-            for cls, prob in zip(model.classes_, raw):
-                cls = int(cls)
-                if 0 <= cls <= 9:
-                    probs[cls] = prob
+            probs = model_probability(
 
-            probs = normalize_probability(probs)
+                X.iloc[:idx],
+
+                y_train,
+
+                X.iloc[[idx]],
+
+                cfg,
+
+                selected,
+
+                system
+            )
+
         except Exception:
+
             continue
 
-        actual = int(y.iloc[idx])
-        ranking = np.argsort(probs)[::-1]
+        actual = int(
+            y.iloc[idx]
+        )
 
-        records.append({
-            "top1": int(actual == ranking[0]),
-            "top3": int(actual in ranking[:3]),
-            "top5": int(actual in ranking[:5]),
-            "dead7": int(actual in np.argsort(probs)[:7]),
-            "logloss": -np.log(max(float(probs[actual]), 1e-9))
-        })
+        order = np.argsort(
+            probs
+        )[::-1]
+
+        # ====================================================
+        # HOT
+        # ====================================================
+
+        if system == "hot":
+
+            records.append({
+
+                "top1":
+                    int(
+                        actual
+                        ==
+                        order[0]
+                    ),
+
+                "top3":
+                    int(
+                        actual
+                        in
+                        order[:3]
+                    ),
+
+                "top5":
+                    int(
+                        actual
+                        in
+                        order[:5]
+                    ),
+
+                "logloss":
+                    -np.log(
+                        max(
+                            float(
+                                probs[
+                                    actual
+                                ]
+                            ),
+                            1e-9
+                        )
+                    )
+            })
+
+        # ====================================================
+        # DEAD
+        # ====================================================
+
+        else:
+
+            dead_score = (
+                1.0
+                -
+                probs
+            )
+
+            dead_order = np.argsort(
+                dead_score
+            )[::-1]
+
+            records.append({
+
+                "dead5":
+                    int(
+                        actual
+                        in
+                        dead_order[:5]
+                    ),
+
+                "dead7":
+                    int(
+                        actual
+                        in
+                        dead_order[:7]
+                    ),
+
+                "not_dead7":
+                    int(
+                        actual
+                        not in
+                        dead_order[:7]
+                    ),
+
+                "logloss":
+                    -np.log(
+                        max(
+                            float(
+                                probs[
+                                    actual
+                                ]
+                            ),
+                            1e-9
+                        )
+                    )
+            })
 
     if not records:
-        return {"tests": 0, "scores": {}}
 
-    h = pd.DataFrame(records)
+        return {
 
-    decay = (cfg["recent_decay"] ** (len(h) - np.arange(len(h)) - 1))
+            "tests": 0,
+
+            "scores": {}
+        }
+
+    h = pd.DataFrame(
+        records
+    )
+
+    # ========================================================
+    # RECENCY WEIGHT
+    # ========================================================
+
+    decay = (
+
+        cfg["recent_decay"]
+        **
+        (
+            len(h)
+            -
+            np.arange(
+                len(h)
+            )
+            - 1
+        )
+    )
+
     decay /= decay.sum()
 
-    scores = {
-        "top1": float(np.sum(h["top1"] * decay)),
-        "top3": float(np.sum(h["top3"] * decay)),
-        "top5": float(np.sum(h["top5"] * decay)),
-        "dead7": float(np.sum(h["dead7"] * decay)),
-        "logloss": float(np.sum(h["logloss"] * decay))
-    }
+    # ========================================================
+    # HOT SCORE
+    # ========================================================
 
-    scores["score"] = (
-        0.35 * scores["top1"] +
-        0.30 * scores["top3"] +
-        0.20 * scores["top5"] +
-        0.10 * (1 / (1 + scores["logloss"])) +
-        0.05 * (1 - scores["dead7"])
-    )
+    if system == "hot":
 
-    return {"tests": len(h), "scores": scores}
+        scores = {
 
+            "top1":
+                float(
+                    np.sum(
+                        h["top1"]
+                        *
+                        decay
+                    )
+                ),
 
-# ============================================================
-# 18. FINAL PREDICTION
-# ============================================================
+            "top3":
+                float(
+                    np.sum(
+                        h["top3"]
+                        *
+                        decay
+                    )
+                ),
 
-def final_prediction(df_feat, pos, features, cfg):
+            "top5":
+                float(
+                    np.sum(
+                        h["top5"]
+                        *
+                        decay
+                    )
+                ),
 
-    X = df_feat[features].astype(np.float32)
-    y = df_feat[pos].astype(np.int8)
+            "logloss":
+                float(
+                    np.sum(
+                        h["logloss"]
+                        *
+                        decay
+                    )
+                )
+        }
 
-    X_train = X.iloc[:-1]
-    y_train = y.iloc[:-1]
-    X_test = X.iloc[[-1]]
+        scores["score"] = (
 
-    selected = select_features_once(
-        X_train,
-        y_train,
-        cfg["selected_features"]
-    )
+            0.50
+            *
+            scores["top3"]
 
-    probs = train_models(
-        X_train,
-        y_train,
-        X_test,
-        cfg,
-        selected
-    )
+            +
 
-    order = np.argsort(probs)[::-1]
-    hot = [(int(i), float(probs[i])) for i in order[:5]]
-    dead = [(int(i), float(probs[i])) for i in np.argsort(probs)[:7]]
+            0.35
+            *
+            scores["top1"]
 
-    confidence = probs[order[0]] - probs[order[1]]
+            +
+
+            0.15
+            *
+            (
+                1
+                /
+                (
+                    1
+                    +
+                    scores["logloss"]
+                )
+            )
+        )
+
+    # ========================================================
+    # DEAD SCORE
+    # ========================================================
+
+    else:
+
+        scores = {
+
+            "dead5":
+                float(
+                    np.sum(
+                        h["dead5"]
+                        *
+                        decay
+                    )
+                ),
+
+            "dead7":
+                float(
+                    np.sum(
+                        h["dead7"]
+                        *
+                        decay
+                    )
+                ),
+
+            "not_dead7":
+                float(
+                    np.sum(
+                        h["not_dead7"]
+                        *
+                        decay
+                    )
+                ),
+
+            "logloss":
+                float(
+                    np.sum(
+                        h["logloss"]
+                        *
+                        decay
+                    )
+                )
+        }
+
+        scores["score"] = (
+
+            0.50
+            *
+            scores["dead7"]
+
+            +
+
+            0.30
+            *
+            scores["not_dead7"]
+
+            +
+
+            0.20
+            *
+            scores["dead5"]
+        )
 
     return {
-        "probabilities": probs,
-        "hot": hot,
-        "dead": dead,
-        "confidence": float(confidence),
-        "top3": float(probs[order[:3]].sum()),
-        "selected_features": selected
+
+        "tests":
+            len(h),
+
+        "scores":
+            scores
     }
 
 
 # ============================================================
-# 19. DISPLAY CARD
+# 23. FINAL PREDICTION
 # ============================================================
 
-def display_card(pos, result, hot=True):
+def final_prediction(
+    df_feat,
+    pos,
+    features,
+    cfg
+):
 
-    data = result["hot"] if hot else result["dead"]
-    style = "hot" if hot else "dead"
+    X = (
+        df_feat[features]
+        .astype(np.float32)
+    )
 
-    nums = " - ".join(str(n) for n, _ in data)
-    probs = " | ".join(f"{n}: {p*100:.1f}%" for n, p in data)
+    y = (
+        df_feat[pos]
+        .astype(np.int8)
+    )
+
+    # --------------------------------------------------------
+    # IMPORTANT
+    # --------------------------------------------------------
+    # df_feat แถวสุดท้ายเป็น dummy target
+    # ดังนั้น train ใช้เฉพาะข้อมูลจริง
+    # --------------------------------------------------------
+
+    X_train = X.iloc[:-1]
+
+    y_train = y.iloc[:-1]
+
+    X_test = X.iloc[[-1]]
+
+    # ========================================================
+    # HOT
+    # ========================================================
+
+    hot = hot_system(
+
+        X_train,
+
+        y_train,
+
+        X_test,
+
+        cfg
+    )
+
+    # ========================================================
+    # DEAD
+    # ========================================================
+
+    dead = dead_system(
+
+        X_train,
+
+        y_train,
+
+        X_test,
+
+        cfg
+    )
+
+    return {
+
+        "hot":
+            hot,
+
+        "dead":
+            dead
+    }
+
+
+# ============================================================
+# 24. DISPLAY HOT
+# ============================================================
+
+def display_hot_card(
+    pos,
+    result
+):
+
+    data = result["hot"]["hot"]
+
+    nums = " - ".join(
+        str(n)
+        for n, _ in data
+    )
+
+    probs = " | ".join(
+        f"{n}: {p*100:.1f}%"
+        for n, p in data
+    )
 
     html = f"""
-    <div class="{style}-card">
-        <div class="position-title">{POSITION_LABELS[pos]}</div>
-        <div class="{style}-number">{nums}</div>
-        <div class="prob-text">AI Probability: {probs}</div>
-    """
 
-    if hot:
-        html += f"""
+    <div class="hot-card">
+
+        <div class="position-title">
+            {POSITION_LABELS[pos]}
+        </div>
+
+        <div class="hot-number">
+            {nums}
+        </div>
+
+        <div class="prob-text">
+
+            🔥 HOT TOP-3<br>
+
+            {probs}
+
+        </div>
+
         <div class="confidence">
-            📌 Top-1 Gap: {result["confidence"]*100:.1f}% &nbsp;|&nbsp; 
-            Top-3: {result["top3"]*100:.1f}%
-        </div>
-        """
 
-    html += """
-        <div class="model-badge">
-            🤖 AI Ensemble: ExtraTrees (40%) + HistGradientBoosting (60%)
+            📌 Gap:
+            {result["hot"]["confidence"]*100:.1f}%
+
+            &nbsp;|&nbsp;
+
+            Top-3 Coverage:
+            {result["hot"]["top3"]*100:.1f}%
+
         </div>
+
+        <div class="model-badge">
+
+            🔥 HOT AI SYSTEM<br>
+
+            ExtraTrees +
+            HistGradientBoosting<br>
+
+            Feature Selection:
+            {len(result["hot"]["selected_features"])}
+
+        </div>
+
     </div>
+
     """
 
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(
+        html,
+        unsafe_allow_html=True
+    )
 
 
 # ============================================================
-# 20. MAIN
+# 25. DISPLAY DEAD
+# ============================================================
+
+def display_dead_card(
+    pos,
+    result
+):
+
+    data = result["dead"]["dead"]
+
+    nums = " - ".join(
+        str(n)
+        for n, _ in data
+    )
+
+    scores = " | ".join(
+        f"{n}: {p*100:.1f}%"
+        for n, p in data
+    )
+
+    html = f"""
+
+    <div class="dead-card">
+
+        <div class="position-title">
+            {POSITION_LABELS[pos]}
+        </div>
+
+        <div class="dead-number">
+            {nums}
+        </div>
+
+        <div class="prob-text">
+
+            🛑 DEAD TOP-7<br>
+
+            {scores}
+
+        </div>
+
+        <div class="confidence">
+
+            🛑 Dead Score Coverage:
+            {result["dead"]["top7"]*100:.1f}%
+
+        </div>
+
+        <div class="model-badge">
+
+            🛑 DEAD AI SYSTEM<br>
+
+            ExtraTrees +
+            HistGradientBoosting<br>
+
+            Feature Selection:
+            {len(result["dead"]["selected_features"])}
+
+        </div>
+
+    </div>
+
+    """
+
+    st.markdown(
+        html,
+        unsafe_allow_html=True
+    )
+
+
+# ============================================================
+# 26. MAIN
 # ============================================================
 
 def main():
@@ -1320,172 +2574,890 @@ def main():
     inject_css()
 
     st.markdown(
+
         """
         <div class="main-title">
-            🤖 LOTTO AI PRO V8.4 TURBO EXTREME
+
+            🤖 LOTTO AI PRO V8.3.1
+            TURBO EXTREME
+
         </div>
+
         <div class="subtitle">
-            STRICT WALK-FORWARD • LEAKAGE SAFE • NO PERSISTENT MEMORY • ⚡ TURBO + ACCURACY BOOST
+
+            🔥 HOT TOP-3
+            &nbsp;|&nbsp;
+            🛑 DEAD TOP-7
+            &nbsp;|&nbsp;
+            STRICT WALK-FORWARD
+            &nbsp;|&nbsp;
+            LEAKAGE SAFE
+
         </div>
         """,
+
         unsafe_allow_html=True
     )
+
+    # ========================================================
+    # SELECT
+    # ========================================================
 
     c1, c2 = st.columns(2)
 
     lottery = c1.selectbox(
+
         "🏷️ เลือกประเภทหวย",
-        list(LOTTERY_SOURCES.keys())
+
+        list(
+            LOTTERY_SOURCES.keys()
+        )
     )
 
     selected_day = c2.selectbox(
+
         "📅 วันเป้าหมาย",
-        ["อัตโนมัติ"] + DOW_NAMES
+
+        [
+            "อัตโนมัติ"
+        ]
+        +
+        DOW_NAMES
     )
 
-    if not st.button("🚀 เริ่มวิเคราะห์ V8.4 (TURBO + ACCURACY)", type="primary", use_container_width=True):
+    # ========================================================
+    # START
+    # ========================================================
+
+    if not st.button(
+
+        "🚀 เริ่มวิเคราะห์ V8.3.1 TURBO EXTREME",
+
+        type="primary",
+
+        use_container_width=True
+    ):
+
         return
 
-    with st.spinner("📥 โหลดข้อมูล..."):
+    # ========================================================
+    # LOAD
+    # ========================================================
+
+    with st.spinner(
+        "📥 โหลดข้อมูล..."
+    ):
+
         try:
-            df = fetch_lottery_data(LOTTERY_SOURCES[lottery])
+
+            df = fetch_lottery_data(
+
+                LOTTERY_SOURCES[
+                    lottery
+                ]
+            )
+
         except Exception as exc:
-            st.error(str(exc))
+
+            st.error(
+                str(exc)
+            )
+
             return
 
+    # ========================================================
+    # VALIDATE
+    # ========================================================
+
     if len(df) < 50:
-        st.error(f"❌ มีข้อมูล {len(df)} งวด ต้องมีอย่างน้อย 50 งวด")
+
+        st.error(
+
+            f"❌ มีข้อมูล "
+            f"{len(df)} งวด "
+            "ต้องมีอย่างน้อย 50 งวด"
+        )
+
         return
 
-    thai_6d = (lottery == "หวยไทย" and is_thai_6d(df))
-    positions = (THAI_POSITIONS if thai_6d else NORMAL_POSITIONS)
+    # ========================================================
+    # FORMAT
+    # ========================================================
 
-    last_date = pd.Timestamp(df["Date"].iloc[-1])
+    thai_6d = (
+
+        lottery == "หวยไทย"
+
+        and
+
+        is_thai_6d(df)
+    )
+
+    positions = (
+
+        THAI_POSITIONS
+
+        if thai_6d
+
+        else NORMAL_POSITIONS
+    )
+
+    # ========================================================
+    # TARGET DATE
+    # ========================================================
+
+    last_date = pd.Timestamp(
+        df["Date"].iloc[-1]
+    )
 
     if selected_day == "อัตโนมัติ":
+
         if len(df) >= 2:
-            gap = (df["Date"].iloc[-1] - df["Date"].iloc[-2]).days
-            days_ahead = max(int(gap), 1)
+
+            gap = (
+
+                df["Date"].iloc[-1]
+
+                -
+
+                df["Date"].iloc[-2]
+            ).days
+
+            days_ahead = max(
+                int(gap),
+                1
+            )
+
         else:
-            days_ahead = 7
-    else:
-        target_dow = DOW_NAMES.index(selected_day)
-        days_ahead = (target_dow - last_date.dayofweek) % 7
-        if days_ahead == 0:
+
             days_ahead = 7
 
-    target_date = last_date + timedelta(days=days_ahead)
+    else:
+
+        target_dow = (
+            DOW_NAMES.index(
+                selected_day
+            )
+        )
+
+        days_ahead = (
+
+            target_dow
+
+            -
+
+            last_date.dayofweek
+
+        ) % 7
+
+        if days_ahead == 0:
+
+            days_ahead = 7
+
+    target_date = (
+
+        last_date
+
+        +
+
+        timedelta(
+            days=days_ahead
+        )
+    )
+
+    # ========================================================
+    # DUMMY TARGET
+    # ========================================================
 
     dummy = {
-        "Date": target_date,
-        "Result_3D": "000",
-        "Result_2D": "00"
+
+        "Date":
+            target_date,
+
+        "Result_3D":
+            "000",
+
+        "Result_2D":
+            "00"
     }
 
     if thai_6d:
-        dummy["Result_6D"] = "000000"
 
-    ext = pd.concat([df, pd.DataFrame([dummy])], ignore_index=True)
+        dummy[
+            "Result_6D"
+        ] = "000000"
 
-    with st.spinner("⚡ สร้าง Turbo Feature Matrix (Upgraded)..."):
-        feat = build_features(ext, thai_6d)
-        features = get_features(thai_6d)
-        cfg = get_adaptive_config(len(df))
+    ext = pd.concat(
+
+        [
+            df,
+
+            pd.DataFrame(
+                [dummy]
+            )
+        ],
+
+        ignore_index=True
+    )
+
+    # ========================================================
+    # FEATURES
+    # ========================================================
+
+    with st.spinner(
+
+        "⚡ สร้าง Turbo Feature Matrix..."
+    ):
+
+        feat = build_features(
+
+            ext,
+
+            thai_6d
+        )
+
+        features = get_features(
+
+            thai_6d
+        )
+
+        cfg = get_adaptive_config(
+
+            len(df)
+        )
+
+    # ========================================================
+    # INFO
+    # ========================================================
 
     st.info(
+
         f"""
-        ⚡ V8.4 TURBO EXTREME | ข้อมูล {len(df):,} งวด | 
-        {"หวยไทย 6 หลัก + 2 หลัก" if thai_6d else "3 หลัก + 2 หลัก"} | 
-        Features {len(features)} | Selected ≤ {cfg["selected_features"]} | 
-        Trees {cfg["trees"]} | WF Tests {cfg["backtest_points"]}
+
+        ⚡ V8.3.1 TURBO EXTREME |
+
+        ข้อมูล {len(df):,} งวด |
+
+        {"หวยไทย 6 หลัก + 2 หลัก"
+         if thai_6d
+         else
+         "หวย 3 หลัก + 2 หลัก"} |
+
+        🔥 HOT TOP-3 |
+
+        🛑 DEAD TOP-7 |
+
+        HOT Features ≤
+        {cfg["hot_features"]} |
+
+        DEAD Features ≤
+        {cfg["dead_features"]} |
+
+        Trees
+        {cfg["trees"]} |
+
+        WF
+        {cfg["backtest_points"]}
+
         """
     )
 
-    backtest = {}
+    # ========================================================
+    # RESULT
+    # ========================================================
+
+    hot_backtest = {}
+    dead_backtest = {}
     final = {}
 
     progress = st.progress(0)
+
     status = st.empty()
-    total = len(positions)
 
-    for i, pos in enumerate(positions):
+    total = len(
+        positions
+    )
 
-        status.caption(f"⚡ V8.4 TURBO: {POSITION_LABELS[pos]}")
+    for i, pos in enumerate(
+        positions
+    ):
 
-        backtest[pos] = strict_walk_forward(feat.iloc[:-1], pos, features, cfg)
-        final[pos] = final_prediction(feat, pos, features, cfg)
+        status.caption(
 
-        progress.progress(int(((i + 1) / total) * 100))
+            f"⚡ V8.3.1: "
+            f"{POSITION_LABELS[pos]}"
+        )
+
+        # ====================================================
+        # HOT BACKTEST
+        # ====================================================
+
+        hot_backtest[pos] = (
+            hot_walk_forward(
+
+                feat.iloc[:-1],
+
+                pos,
+
+                features,
+
+                cfg
+            )
+        )
+
+        # ====================================================
+        # DEAD BACKTEST
+        # ====================================================
+
+        dead_backtest[pos] = (
+            dead_walk_forward(
+
+                feat.iloc[:-1],
+
+                pos,
+
+                features,
+
+                cfg
+            )
+        )
+
+        # ====================================================
+        # FINAL
+        # ====================================================
+
+        final[pos] = (
+            final_prediction(
+
+                feat,
+
+                pos,
+
+                features,
+
+                cfg
+            )
+        )
+
+        progress.progress(
+
+            int(
+                (
+                    (i + 1)
+                    /
+                    total
+                )
+                *
+                100
+            )
+        )
 
     progress.empty()
+
     status.empty()
 
-    tests = [x["tests"] for x in backtest.values() if x.get("tests", 0) > 0]
-    test_text = f"{min(tests)}–{max(tests)} จุด" if tests else "ไม่มี"
+    # ========================================================
+    # TEST INFO
+    # ========================================================
+
+    hot_tests = [
+
+        x["tests"]
+
+        for x in
+        hot_backtest.values()
+
+        if x.get(
+            "tests",
+            0
+        ) > 0
+    ]
+
+    dead_tests = [
+
+        x["tests"]
+
+        for x in
+        dead_backtest.values()
+
+        if x.get(
+            "tests",
+            0
+        ) > 0
+    ]
+
+    if hot_tests:
+
+        hot_test_text = (
+            f"{min(hot_tests)}–"
+            f"{max(hot_tests)} จุด"
+        )
+
+    else:
+
+        hot_test_text = "ไม่มี"
+
+    if dead_tests:
+
+        dead_test_text = (
+            f"{min(dead_tests)}–"
+            f"{max(dead_tests)} จุด"
+        )
+
+    else:
+
+        dead_test_text = "ไม่มี"
+
+    # ========================================================
+    # STATUS
+    # ========================================================
 
     st.markdown(
+
         f"""
+
         <div class="status-card">
-        🤖 <b>LOTTO AI PRO V8.4 TURBO EXTREME</b><br>
-        📊 ข้อมูล: {len(df):,} งวด<br>
-        📅 เป้าหมาย: {target_date.strftime("%d/%m/%Y")}<br>
-        🎯 Mode: {"6D + 2D" if thai_6d else "3D + 2D"}<br>
-        🧠 Features: {len(features)}<br>
-        🎯 Selected: ≤{cfg["selected_features"]}<br>
-        🌳 Trees: {cfg["trees"]}<br>
-        ⚡ Walk-Forward: {test_text}
+
+        🤖 <b>
+        LOTTO AI PRO V8.3.1
+        TURBO EXTREME
+        </b><br>
+
+        📊 ข้อมูล:
+        {len(df):,} งวด<br>
+
+        📅 เป้าหมาย:
+        {target_date.strftime("%d/%m/%Y")}<br>
+
+        🎯 Mode:
+        {"6D + 2D"
+         if thai_6d
+         else
+         "3D + 2D"}<br>
+
+        🔥 HOT:
+        Top-3 |
+        WF {hot_test_text}<br>
+
+        🛑 DEAD:
+        Top-7 |
+        WF {dead_test_text}<br>
+
+        🧠 Features:
+        {len(features)}<br>
+
+        🔥 HOT Selected:
+        ≤{cfg["hot_features"]}<br>
+
+        🛑 DEAD Selected:
+        ≤{cfg["dead_features"]}<br>
+
+        🌳 Trees:
+        {cfg["trees"]}<br>
+
+        🔒 No Persistent Model
+
         </div>
+
         <br>
+
         """,
+
         unsafe_allow_html=True
     )
 
-    t1, t2, t3 = st.tabs(["🎯 เลขเด่น AI", "🛑 เลขดับ 7", "📊 Backtest"])
+    # ========================================================
+    # TABS
+    # ========================================================
+
+    t1, t2, t3 = st.tabs(
+
+        [
+            "🔥 เลขเด่น TOP-3",
+
+            "🛑 เลขดับ TOP-7",
+
+            "📊 Backtest"
+        ]
+    )
+
+    # ========================================================
+    # HOT
+    # ========================================================
 
     with t1:
+
+        st.markdown(
+            "### 🔥 ระบบเลขเด่น AI TOP-3"
+        )
+
+        st.caption(
+            "ระบบเลขเด่นแยกจากระบบเลขดับ "
+            "และจัดอันดับโดยเน้น TOP-3"
+        )
+
         for pos in positions:
-            display_card(pos, final[pos], True)
+
+            display_hot_card(
+
+                pos,
+
+                final[pos]
+            )
+
+    # ========================================================
+    # DEAD
+    # ========================================================
 
     with t2:
+
+        st.markdown(
+            "### 🛑 ระบบเลขดับ AI TOP-7"
+        )
+
+        st.caption(
+            "ระบบเลขดับแยกจากระบบเลขเด่น "
+            "และคัดเลขดับ 7 อันดับ"
+        )
+
         for pos in positions:
-            display_card(pos, final[pos], False)
+
+            display_dead_card(
+
+                pos,
+
+                final[pos]
+            )
+
+    # ========================================================
+    # BACKTEST
+    # ========================================================
 
     with t3:
+
+        st.markdown(
+            "## 📊 HOT / DEAD BACKTEST"
+        )
+
+        # ====================================================
+        # HOT
+        # ====================================================
+
+        st.markdown(
+            "### 🔥 HOT SYSTEM"
+        )
+
         for pos in positions:
-            st.markdown(f"### {POSITION_LABELS[pos]}")
-            score = backtest[pos].get("scores", {})
+
+            score = (
+                hot_backtest[pos]
+                .get(
+                    "scores",
+                    {}
+                )
+            )
 
             if not score:
-                st.warning("ไม่มี Backtest")
                 continue
 
+            st.markdown(
+                f"**{POSITION_LABELS[pos]}**"
+            )
+
             st.dataframe(
+
                 pd.DataFrame([
-                    {"Metric": "Top-1", "AI": f"{score['top1']*100:.1f}%", "Random": "10%", "Edge": f"{(score['top1']-.10)*100:+.1f}%"},
-                    {"Metric": "Top-3", "AI": f"{score['top3']*100:.1f}%", "Random": "30%", "Edge": f"{(score['top3']-.30)*100:+.1f}%"},
-                    {"Metric": "Top-5", "AI": f"{score['top5']*100:.1f}%", "Random": "50%", "Edge": f"{(score['top5']-.50)*100:+.1f}%"},
-                    {"Metric": "Dead-7", "AI": f"{score['dead7']*100:.1f}%", "Random": "70%", "Edge": f"{(score['dead7']-.70)*100:+.1f}%"},
-                    {"Metric": "LogLoss", "AI": f"{score['logloss']:.3f}", "Random": "-", "Edge": "-"}
+
+                    {
+
+                        "Metric":
+                            "HOT Top-1",
+
+                        "AI":
+                            f"{score['top1']*100:.1f}%",
+
+                        "Random":
+                            "10%",
+
+                        "Edge":
+                            f"{(score['top1']-.10)*100:+.1f}%"
+                    },
+
+                    {
+
+                        "Metric":
+                            "HOT Top-3",
+
+                        "AI":
+                            f"{score['top3']*100:.1f}%",
+
+                        "Random":
+                            "30%",
+
+                        "Edge":
+                            f"{(score['top3']-.30)*100:+.1f}%"
+                    },
+
+                    {
+
+                        "Metric":
+                            "HOT Top-5",
+
+                        "AI":
+                            f"{score['top5']*100:.1f}%",
+
+                        "Random":
+                            "50%",
+
+                        "Edge":
+                            f"{(score['top5']-.50)*100:+.1f}%"
+                    },
+
+                    {
+
+                        "Metric":
+                            "LogLoss",
+
+                        "AI":
+                            f"{score['logloss']:.3f}",
+
+                        "Random":
+                            "-",
+
+                        "Edge":
+                            "-"
+                    },
+
+                    {
+
+                        "Metric":
+                            "HOT Score",
+
+                        "AI":
+                            f"{score['score']*100:.1f}%",
+
+                        "Random":
+                            "-",
+
+                        "Edge":
+                            "-"
+                    }
+
                 ]),
+
                 use_container_width=True,
+
                 hide_index=True
             )
 
-    with st.expander("🎯 สรุปเลขเด่นทั้งหมด"):
-        data = []
+        # ====================================================
+        # DEAD
+        # ====================================================
+
+        st.markdown(
+            "### 🛑 DEAD SYSTEM"
+        )
+
         for pos in positions:
-            sc = backtest[pos].get("scores", {})
+
+            score = (
+                dead_backtest[pos]
+                .get(
+                    "scores",
+                    {}
+                )
+            )
+
+            if not score:
+                continue
+
+            st.markdown(
+                f"**{POSITION_LABELS[pos]}**"
+            )
+
+            st.dataframe(
+
+                pd.DataFrame([
+
+                    {
+
+                        "Metric":
+                            "Dead-5 Hit",
+
+                        "AI":
+                            f"{score['dead5']*100:.1f}%",
+
+                        "Random":
+                            "50%",
+
+                        "Edge":
+                            f"{(score['dead5']-.50)*100:+.1f}%"
+                    },
+
+                    {
+
+                        "Metric":
+                            "Dead-7 Hit",
+
+                        "AI":
+                            f"{score['dead7']*100:.1f}%",
+
+                        "Random":
+                            "70%",
+
+                        "Edge":
+                            f"{(score['dead7']-.70)*100:+.1f}%"
+                    },
+
+                    {
+
+                        "Metric":
+                            "Avoid Dead-7",
+
+                        "AI":
+                            f"{score['not_dead7']*100:.1f}%",
+
+                        "Random":
+                            "30%",
+
+                        "Edge":
+                            f"{(score['not_dead7']-.30)*100:+.1f}%"
+                    },
+
+                    {
+
+                        "Metric":
+                            "LogLoss",
+
+                        "AI":
+                            f"{score['logloss']:.3f}",
+
+                        "Random":
+                            "-",
+
+                        "Edge":
+                            "-"
+                    },
+
+                    {
+
+                        "Metric":
+                            "DEAD Score",
+
+                        "AI":
+                            f"{score['score']*100:.1f}%",
+
+                        "Random":
+                            "-",
+
+                        "Edge":
+                            "-"
+                    }
+
+                ]),
+
+                use_container_width=True,
+
+                hide_index=True
+            )
+
+    # ========================================================
+    # SUMMARY
+    # ========================================================
+
+    with st.expander(
+        "🎯 สรุปผล V8.3.1"
+    ):
+
+        data = []
+
+        for pos in positions:
+
+            hot_score = (
+                hot_backtest[pos]
+                .get(
+                    "scores",
+                    {}
+                )
+            )
+
+            dead_score = (
+                dead_backtest[pos]
+                .get(
+                    "scores",
+                    {}
+                )
+            )
+
+            hot_top = (
+                final[pos]["hot"]["hot"][0]
+            )
+
+            dead_top = (
+                final[pos]["dead"]["dead"][0]
+            )
+
             data.append({
-                "ตำแหน่ง": POSITION_LABELS[pos],
-                "Top-1": final[pos]["hot"][0][0],
-                "Probability": f'{final[pos]["hot"][0][1]*100:.1f}%',
-                "WF Top-1": f'{sc.get("top1", 0)*100:.1f}%',
-                "WF Top-3": f'{sc.get("top3", 0)*100:.1f}%',
-                "Confidence": f'{final[pos]["confidence"]*100:.1f}%'
+
+                "ตำแหน่ง":
+                    POSITION_LABELS[pos],
+
+                "🔥 HOT Top-3":
+                    " - ".join(
+                        str(n)
+                        for n, _
+                        in final[pos][
+                            "hot"
+                        ]["hot"]
+                    ),
+
+                "HOT #1":
+                    f"{hot_top[0]} "
+                    f"({hot_top[1]*100:.1f}%)",
+
+                "HOT WF Top-3":
+                    f"{hot_score.get('top3', 0)*100:.1f}%",
+
+                "🛑 DEAD Top-7":
+                    " - ".join(
+                        str(n)
+                        for n, _
+                        in final[pos][
+                            "dead"
+                        ]["dead"]
+                    ),
+
+                "DEAD #1":
+                    f"{dead_top[0]} "
+                    f"({dead_top[1]*100:.1f}%)",
+
+                "DEAD WF-7":
+                    f"{dead_score.get('dead7', 0)*100:.1f}%"
             })
 
-        st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+        st.dataframe(
 
+            pd.DataFrame(data),
+
+            use_container_width=True,
+
+            hide_index=True
+        )
+
+    # ========================================================
+    # IMPORTANT NOTE
+    # ========================================================
+
+    st.caption(
+        "⚠️ ระบบนี้เป็นการจัดอันดับเชิงสถิติ/แมชชีนเลิร์นนิง "
+        "ไม่สามารถรับประกันผลสลากจริงได้"
+    )
+
+
+# ============================================================
+# 27. RUN
+# ============================================================
 
 if __name__ == "__main__":
+
     main()
