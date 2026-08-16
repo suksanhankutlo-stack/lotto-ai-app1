@@ -132,15 +132,20 @@ class ScrapingError(Exception): pass
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_lottery_data(url):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "th-TH,th;q=0.9,en;q=0.8"
+    }
     try:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        content = soup.find("div", class_=re.compile(r"post-body|entry-content", re.I)) or soup
+        
+        # ขยาย class ในการค้นหาให้กว้างขึ้น
+        content = soup.find("div", class_=re.compile(r"post-body|entry-content|post-content|content", re.I)) or soup
         rows = []
         
-        # Parse table logic
+        # 1. พยายามดึงแบบตารางก่อน (Table parsing)
         for row in content.find_all("tr"):
             text = " ".join([c.get_text(" ", strip=True) for c in row.find_all(["td", "th"])])
             date = normalize_date(text)
@@ -152,6 +157,24 @@ def fetch_lottery_data(url):
             if six and two: rows.append({"Date": date, "Result_6D": six[0], "Result_3D": six[0][-3:], "Result_2D": two[-1]})
             elif three and two: rows.append({"Date": date, "Result_6D": None, "Result_3D": three[0], "Result_2D": two[-1]})
             
+        # 2. ถ้าดึงแบบตารางไม่เจอ ให้ดึงจากข้อความธรรมดา (Text Fallback)
+        if not rows:
+            text = content.get_text(separator="\n", strip=True)
+            lines = [x.strip() for x in text.splitlines() if x.strip()]
+            current_date = None
+            
+            for line in lines:
+                date = normalize_date(line)
+                if date is not None: current_date = date
+                if current_date is None: continue
+                
+                six = re.findall(r"(?<!\d)\d{6}(?!\d)", line)
+                three = re.findall(r"(?<!\d)\d{3}(?!\d)", line)
+                two = re.findall(r"(?<!\d)\d{2}(?!\d)", line)
+                
+                if six and two: rows.append({"Date": current_date, "Result_6D": six[0], "Result_3D": six[0][-3:], "Result_2D": two[-1]})
+                elif three and two: rows.append({"Date": current_date, "Result_6D": None, "Result_3D": three[0], "Result_2D": two[-1]})
+
         if not rows:
             raise ScrapingError("ไม่พบข้อมูลหวยในรูปแบบที่รองรับ")
 
@@ -492,7 +515,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # HIGHLIGHT SUMMARY (NEW: Put summary at the top)
+    # HIGHLIGHT SUMMARY
     # ---------------------------------------------------------
     st.markdown("### 🏆 สรุปเลขฟันธง V9.0 (AI Recommend)")
     summary_data = []
@@ -509,7 +532,7 @@ def main():
     st.markdown("---")
 
     # ---------------------------------------------------------
-    # DETAILED TABS (Side by Side display)
+    # DETAILED TABS
     # ---------------------------------------------------------
     t1, t2 = st.tabs(["🎯 เจาะลึกรายหลัก (Hot & Dead)", "📊 สถิติความแม่นยำย้อนหลัง"])
 
