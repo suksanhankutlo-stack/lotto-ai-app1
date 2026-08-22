@@ -1,12 +1,12 @@
 # ============================================================
-# 🤖 LOTTO AI PRO V9.2.2 ADAPTIVE STABILITY TURBO (Dead-Lock)
+# 🤖 LOTTO AI PRO V9.3 ADAPTIVE STABILITY TURBO (Hot-Consensus)
 # ============================================================
-# V9.2.2 improvements:
-# - Pessimistic Dual-Ensemble for Dead Numbers (Max Prob Agreement)
-# - Overdue Reversion Protection (Prevents killing numbers due to appear)
-# - Exponential Penalty for Dead Score calculation
+# V9.3 improvements:
+# - Geometric Mean Blending for strict HOT consensus
+# - Momentum Features (EMA3 vs EMA9 MACD-style)
+# - Uncertainty Warning for low Top-Gap situations
+# - Maintained V9.2.2 Pessimistic Dead-Lock
 # - Ultra-fast feature selection via f_classif
-# - Native Categorical Features in HistGradientBoosting
 # ============================================================
 
 import re
@@ -25,7 +25,7 @@ from sklearn.feature_selection import SelectKBest, f_classif
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
-    page_title="Lotto AI V9.2.2 Dead-Lock Turbo",
+    page_title="Lotto AI V9.3 Hot-Consensus Turbo",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -86,6 +86,7 @@ def inject_css():
     .dead-number { font-size:1.8rem;font-weight:800;letter-spacing:2px;text-align:center;color:#dc2626; }
     .prob-text { text-align:center;color:#475569;font-size:.9rem;line-height:1.6;margin-top:10px; }
     .prob-pill { display:inline-block;background:#e2e8f0;border-radius:20px;padding:2px 10px;margin:3px;font-weight:600;font-size:.85rem; }
+    .warning-text { color: #d97706; font-weight: 700; font-size: 0.85rem; margin-top: 5px; }
     .confidence { text-align:center;font-size:.85rem;font-weight:700;margin-top:10px;color:#64748b; }
     div.stButton > button { min-height:50px;border-radius:10px;font-size:18px;font-weight:800; }
     </style>
@@ -214,7 +215,12 @@ def build_features(df, thai_6d=False):
         w[f"{pos}_HIGH"] = (p >= 5).astype(np.float32)
         w[f"{pos}_SIN"] = np.sin(2*np.pi*p/10).astype(np.float32)
         w[f"{pos}_COS"] = np.cos(2*np.pi*p/10).astype(np.float32)
-        w[f"{pos}_EWMA7"] = p.ewm(span=7, adjust=False).mean()
+        
+        # ⭐ V9.3 New Features: MACD-Style Momentum Tracking
+        w[f"{pos}_EWMA3"] = p.ewm(span=3, adjust=False).mean()
+        w[f"{pos}_EWMA9"] = p.ewm(span=9, adjust=False).mean()
+        w[f"{pos}_MACD"] = w[f"{pos}_EWMA3"] - w[f"{pos}_EWMA9"]
+        
         w[f"{pos}_REPEAT"] = (p == s.shift(2)).astype(np.float32)
         w[f"{pos}_SUM_L1_L2"] = (s.shift(1) + s.shift(2)) % 10
         w[f"{pos}_SUM_L1_L3"] = (s.shift(1) + s.shift(3)) % 10
@@ -238,9 +244,10 @@ def get_features(thai_6d):
             f"{pos}_L1",f"{pos}_L2",f"{pos}_L3",f"{pos}_L5",
             f"{pos}_M10",f"{pos}_M20",f"{pos}_S10",f"{pos}_S20",
             f"{pos}_D1",f"{pos}_D2",f"{pos}_ODD",f"{pos}_HIGH",
-            f"{pos}_SIN",f"{pos}_COS",f"{pos}_EWMA7",f"{pos}_REPEAT",
+            f"{pos}_SIN",f"{pos}_COS",f"{pos}_REPEAT",
             f"{pos}_F10_0",f"{pos}_F10_5",f"{pos}_F20_0",f"{pos}_F20_5",
             f"{pos}_SUM_L1_L2",f"{pos}_SUM_L1_L3", 
+            f"{pos}_EWMA3", f"{pos}_EWMA9", f"{pos}_MACD", # V9.3 Momentum
         ]
     return list(dict.fromkeys(base))
 
@@ -249,10 +256,10 @@ def get_features(thai_6d):
 # ============================================================
 
 def get_adaptive_config(n):
-    if n >= 700: return dict(min_train=120, trees=65, depth=8, leaf=3, hot_features=22, dead_features=18, backtest_points=8, recent_decay=.985, refresh_every=3)
-    if n >= 400: return dict(min_train=100, trees=55, depth=7, leaf=3, hot_features=20, dead_features=16, backtest_points=7, recent_decay=.980, refresh_every=3)
-    if n >= 200: return dict(min_train=80,  trees=45, depth=6, leaf=3, hot_features=18, dead_features=15, backtest_points=6, recent_decay=.975, refresh_every=3)
-    return dict(min_train=50, trees=35, depth=5, leaf=3, hot_features=16, dead_features=14, backtest_points=5, recent_decay=.970, refresh_every=3)
+    if n >= 700: return dict(min_train=120, trees=65, depth=8, leaf=3, hot_features=25, dead_features=18, backtest_points=8, recent_decay=.985, refresh_every=3)
+    if n >= 400: return dict(min_train=100, trees=55, depth=7, leaf=3, hot_features=22, dead_features=16, backtest_points=7, recent_decay=.980, refresh_every=3)
+    if n >= 200: return dict(min_train=80,  trees=45, depth=6, leaf=3, hot_features=20, dead_features=15, backtest_points=6, recent_decay=.975, refresh_every=3)
+    return dict(min_train=50, trees=35, depth=5, leaf=3, hot_features=18, dead_features=14, backtest_points=5, recent_decay=.970, refresh_every=3)
 
 # ============================================================
 # MODEL
@@ -339,21 +346,26 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
 
     if len(preds) == 2:
         if system == "hot":
-            ensemble = preds[0] * 0.60 + preds[1] * 0.40
+            # ⭐ V9.3 HOT STRICT CONSENSUS (Geometric Mean Blend)
+            # ป้องกันโมเดลใดโมเดลหนึ่ง overconfident ต้องเห็นพ้องทั้งคู่ถึงจะได้คะแนนสูง
+            p1, p2 = np.clip(preds[0], 1e-5, 1.0), np.clip(preds[1], 1e-5, 1.0)
+            geo_mean = np.sqrt(p1 * p2)
+            ari_mean = (p1 * 0.55) + (p2 * 0.45)
+            # ผสม Geometric (70%) เพื่อบังคับความเห็นพ้อง และ Arithmetic (30%) เพื่อเกลี่ยฐาน
+            ensemble = (geo_mean * 0.70) + (ari_mean * 0.30)
         else:
-            # ⭐ V9.2.2 PESSIMISTIC ENSEMBLE: 
-            # สำหรับเลขดับ ถ้ามีโมเดลไหนให้ค่า prob สูง ให้ยึดค่าสูงไว้ (ไม่ดับจริง)
+            # ⭐ V9.2.2 DEAD PESSIMISTIC ENSEMBLE
             ensemble = np.maximum(preds[0], preds[1])
     else:
         ensemble = np.mean(preds, axis=0)
 
     p = normalize_probability(ensemble)
-    shrink = .06 if system=="hot" else .08
+    shrink = .05 if system=="hot" else .08
     p = (1-shrink)*p + shrink*.1
     return normalize_probability(p)
 
 # ============================================================
-# HOT
+# HOT (Optimized V9.3)
 # ============================================================
 
 def probability_concentration(p):
@@ -366,36 +378,35 @@ def hot_system(X_train, y_train, X_test, cfg, selected=None):
         selected = select_features_once(X_train,y_train,cfg["hot_features"],"hot")
     p = model_probability(X_train,y_train,X_test,cfg,selected,"hot")
     order = np.argsort(p)[::-1]
+    
+    top_gap = float(p[order[0]] - p[order[1]])
+    
     return {
         "probability": p,
         "hot": [(int(n),float(p[n])) for n in order[:3]],
         "top1_probability": float(p[order[0]]),
         "top3": float(p[order[:3]].sum()),
-        "top_gap": float(p[order[0]]-p[order[1]]),
+        "top_gap": top_gap,
         "concentration": probability_concentration(p),
+        "is_unstable": top_gap < 0.015, # เตือนถ้าระยะห่างอันดับ 1 และ 2 น้อยกว่า 1.5%
         "selected_features": selected,
     }
 
 # ============================================================
-# DEAD (Optimized V9.2.2)
+# DEAD 
 # ============================================================
 
 def build_dead_score(probability, y_train):
     probability = normalize_probability(probability)
-    
-    # 1. AI Confidence (Exponential Penalty)
-    # ยกกำลังสองเพื่อกดคะแนนของเลขที่มีโอกาสออกแม้เพียงเล็กน้อย ให้ไม่กลายเป็นเลขดับ
     inverse_prob = (1.0 - probability) ** 2
     ai_score = normalize_probability(inverse_prob)
 
-    # 2. Recent Coldness (30 periods)
     recent_n = min(30, len(y_train))
     recent = np.asarray(y_train.iloc[-recent_n:], dtype=np.int8)
     freq = np.bincount(recent, minlength=10).astype(np.float32)
     recent_freq = freq / max(1, recent_n)
     cold_score = normalize_probability((1.0 - recent_freq) ** 2)
 
-    # 3. Overdue Reversion Protection (กันเลขอั้น)
     gaps = np.zeros(10, dtype=np.float32)
     arr = np.asarray(y_train)
     for d in range(10):
@@ -405,26 +416,17 @@ def build_dead_score(probability, y_train):
     gap_score = np.zeros(10, dtype=np.float32)
     for d in range(10):
         g = gaps[d]
-        if 2 <= g <= 18:
-            # ช่วงปลอดภัยที่จะสั่งดับ (พักฐาน)
-            gap_score[d] = 1.0
-        elif g <= 1:
-            # เพิ่งออกไปหมาดๆ มีความเสี่ยงที่จะออกซ้ำ (ลดความมั่นใจลง)
-            gap_score[d] = 0.5 
-        else:
-            # หายไปนานเกิน 18 งวด เริ่มเป็น "เลขอั้น" มีโอกาสระเบิดออกได้ทุกเมื่อ (ห้ามสั่งดับเด็ดขาด)
-            gap_score[d] = 0.05 
+        if 2 <= g <= 18: gap_score[d] = 1.0
+        elif g <= 1: gap_score[d] = 0.5 
+        else: gap_score[d] = 0.05 
             
     gap_score = normalize_probability(gap_score)
-
-    # 4. Final Blending
     final_score = (ai_score * 0.70) + (cold_score * 0.15) + (gap_score * 0.15)
     return normalize_probability(final_score)
 
 def dead_system(X_train, y_train, X_test, cfg, selected=None):
     if selected is None:
         selected=select_features_once(X_train,y_train,cfg["dead_features"],"dead")
-    # p ตรงนี้ผ่านกระบวนการ Maximum Ensemble จากทั้งสองโมเดลมาแล้ว
     p = model_probability(X_train,y_train,X_test,cfg,selected,"dead")
     score = build_dead_score(p, y_train)
     order = np.argsort(score)[::-1]
@@ -505,15 +507,21 @@ def final_prediction(df_feat,pos,features,cfg):
 # ============================================================
 
 def display_hot_card(result):
-    data=result["hot"]["hot"]
-    nums=" - ".join(str(n) for n,_ in data)
-    pills="".join(f'<span class="prob-pill">{n}: {p*100:.1f}%</span>' for n,p in data)
-    h=result["hot"]
+    data = result["hot"]["hot"]
+    nums = " - ".join(str(n) for n,_ in data)
+    pills = "".join(f'<span class="prob-pill">{n}: {p*100:.1f}%</span>' for n,p in data)
+    h = result["hot"]
+    
+    warning_html = ""
+    if h["is_unstable"]:
+        warning_html = '<div class="warning-text">⚠️ สถิติเบียดสูสี ระวังพลิก! (Top-Gap &lt; 1.5%)</div>'
+        
     html=f"""
     <div class="hot-card">
       <div class="position-title">🔥 HOT TOP-3</div>
       <div class="hot-number">{nums}</div>
-      <div class="prob-text">โอกาสเชิงโมเดล<br>{pills}</div>
+      <div class="prob-text">โมเดลเห็นพ้อง<br>{pills}</div>
+      {warning_html}
       <div class="confidence">
         🎯 Top-1: {h["top1_probability"]*100:.1f}% &nbsp;|&nbsp; 📌 Gap: {h["top_gap"]*100:.1f}%<br>
         🔥 Top-3 Mass: {h["top3"]*100:.1f}% &nbsp;|&nbsp; 📊 Concentration: {h["concentration"]*100:.1f}%
@@ -544,14 +552,14 @@ def display_dead_card(result):
 
 def main():
     inject_css()
-    st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.2.2 TURBO</div>',unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">⚡ Dead-Lock Optimized | 🔥 HOT TOP-3 | 🛑 SAFE DEAD TOP-7</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.3 TURBO</div>',unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">⚡ Hot-Consensus & Dead-Lock | 🔥 HOT TOP-3 | 🛑 SAFE DEAD TOP-7</div>', unsafe_allow_html=True)
 
     c1,c2=st.columns(2)
     lottery=c1.selectbox("🏷️ เลือกประเภทหวย",list(LOTTERY_SOURCES.keys()))
     selected_day=c2.selectbox("📅 วันเป้าหมาย",["อัตโนมัติ"]+DOW_NAMES)
 
-    if not st.button("⚡ เริ่มวิเคราะห์ระบบ V9.2.2",type="primary",use_container_width=True): return
+    if not st.button("⚡ เริ่มวิเคราะห์ระบบ V9.3",type="primary",use_container_width=True): return
 
     with st.spinner("📥 กำลังดึงข้อมูลสถิติล่าสุด..."):
         try: df=fetch_lottery_data(LOTTERY_SOURCES[lottery])
@@ -577,7 +585,7 @@ def main():
     if thai_6d: dummy["Result_6D"]="000000"
     ext=pd.concat([df,pd.DataFrame([dummy])],ignore_index=True)
 
-    with st.spinner("⚙️ กำลังสร้าง Leakage-Safe Features..."):
+    with st.spinner("⚙️ กำลังสร้าง Leakage-Safe & Momentum Features..."):
         feat=build_features(ext,thai_6d)
         features=get_features(thai_6d)
         cfg=get_adaptive_config(len(df))
@@ -601,19 +609,23 @@ def main():
         <div class="status-card">
         ✅ วิเคราะห์สำเร็จ: {len(df):,} งวด<br>
         🎯 เป้าหมาย: {target_date.strftime("%d/%m/%Y")} ({lottery})<br>
-        ⚙️ โมเดล: ExtraTrees + HGB (Pessimistic Ensemble for Dead)
-        &nbsp;|&nbsp; 🛑 Overdue Protection: Enabled
+        ⚙️ โมเดลเด่น: Geometric Consensus (ต้องเห็นพ้องเท่านั้น)<br>
+        ⚙️ โมเดลดับ: Pessimistic Ensemble (กันเหนียวสูงสุด)
         </div><br>
         """, unsafe_allow_html=True
     )
 
-    st.markdown("### 🏆 สรุปเลขฟันธง V9.2.2")
+    st.markdown("### 🏆 สรุปเลขฟันธง V9.3")
     summary=[]
     for pos in positions:
         hot=final[pos]["hot"]["hot"]
         dead=final[pos]["dead"]["dead"]
+        
+        warn_flag = "⚠️" if final[pos]["hot"]["is_unstable"] else "✅"
+        
         summary.append({
             "ตำแหน่ง":POSITION_LABELS[pos],
+            "สถานะ": warn_flag,
             "🔥 HOT #1":str(hot[0][0]),
             "โอกาสเชิงโมเดล":f"{hot[0][1]*100:.1f}%",
             "🔥 HOT #2/#3":f"{hot[1][0]}, {hot[2][0]}",
@@ -626,7 +638,7 @@ def main():
     t1,t2=st.tabs(["🎯 เจาะลึกรายหลัก","📊 Walk-Forward Backtest"])
 
     with t1:
-        st.markdown("ระบบแยก **HOT TOP-3** และ **COLD/DEAD TOP-7** (ล็อคเป้าดับสนิท)")
+        st.markdown("ระบบแยก **HOT TOP-3** (เอกฉันท์) และ **COLD/DEAD TOP-7** (ล็อคเป้าดับสนิท)")
         for pos in positions:
             st.markdown(f'<div class="position-title">{POSITION_LABELS[pos]}</div>', unsafe_allow_html=True)
             a,b=st.columns(2)
@@ -653,15 +665,15 @@ def main():
                 st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 
     st.markdown("---")
-    st.markdown("### ⚙️ V9.2.2 System Information")
+    st.markdown("### ⚙️ V9.3 System Information")
     info=pd.DataFrame([
-        {"รายการ":"Dead System Engine","ค่า":"Pessimistic Maximum (ต้องห่วยทั้ง 2 โมเดลถึงดับ)"},
-        {"รายการ":"Overdue Protection","ค่า":"Gap > 18 จะไม่โดนปัดเป็นเลขดับ (กันเลขอั้น)"},
-        {"รายการ":"Penalty Scaling","ค่า":"Exponential (ยกกำลังสอง ถ่างช่องว่าง)"},
-        {"รายการ":"Feature Selection","ค่า":"f_classif (Statistical Filter)"},
+        {"รายการ":"Hot System Engine","ค่า":"Geometric Consensus (ต้องเห็นพ้อง 100%)"},
+        {"รายการ":"Dead System Engine","ค่า":"Pessimistic Maximum (ต้องห่วยทั้งคู่)"},
+        {"รายการ":"New Features","ค่า":"MACD-Style Momentum (EMA3 vs EMA9)"},
+        {"รายการ":"Uncertainty Warning","ค่า":"แจ้งเตือน ⚠️ เมื่อความน่าจะเป็นเบียดกัน (Gap < 1.5%)"},
     ])
     st.dataframe(info,use_container_width=True,hide_index=True)
-    st.caption("⚠️ Probability เป็นค่าประเมินทางสถิติที่ปกป้องความเสี่ยงขั้นสูงสุด ไม่รับประกันผล 100%")
+    st.caption("⚠️ Probability เป็นค่าประเมินทางสถิติเพื่อนำไปเป็นแนวทางตัดสินใจ ไม่รับประกันผล 100%")
 
 if __name__=="__main__":
     main()
