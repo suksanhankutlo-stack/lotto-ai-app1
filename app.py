@@ -1,22 +1,11 @@
-
 # ============================================================
-# 🤖 LOTTO AI PRO V9.2 ADAPTIVE STABILITY TURBO
+# 🤖 LOTTO AI PRO V9.2.1 ADAPTIVE STABILITY TURBO (Optimized)
 # ============================================================
-# V9.2 improvements:
-# - Leakage-safe target construction
-# - Date-target row does NOT contribute a fake result
-# - Position-aware feature selection reuse
-# - Recency weighting
-# - ExtraTrees + HistGradientBoosting
-# - Stable ensemble weights
-# - Conservative probability calibration
-# - Hot Top-3 + Cold/Dead Top-7
-# - Walk-forward with fixed recent checkpoints
-# - No balanced class_weight
-# - No expensive hyperparameter search
-# - Mobile-friendly
-#
-# NOTE: statistical estimation only; no lottery result is guaranteed.
+# V9.2.1 improvements:
+# - Ultra-fast feature selection via f_classif (SelectKBest)
+# - Native Categorical Features in HistGradientBoosting
+# - Plateau Time-Decay (30 periods) for stable recency weighting
+# - Modulo arithmetic features (Sum combinations)
 # ============================================================
 
 import re
@@ -30,11 +19,12 @@ import streamlit as st
 from bs4 import BeautifulSoup
 
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier
+from sklearn.feature_selection import SelectKBest, f_classif
 
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
-    page_title="Lotto AI V9.2 Adaptive Turbo",
+    page_title="Lotto AI V9.2.1 Adaptive Turbo",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -111,7 +101,7 @@ def inject_css():
     """, unsafe_allow_html=True)
 
 # ============================================================
-# DATE
+# DATE & FETCH
 # ============================================================
 
 def normalize_date(value):
@@ -149,10 +139,6 @@ def normalize_date(value):
 
 class ScrapingError(Exception):
     pass
-
-# ============================================================
-# FETCH
-# ============================================================
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_lottery_data(url):
@@ -285,6 +271,10 @@ def build_features(df, thai_6d=False):
         w[f"{pos}_COS"] = np.cos(2*np.pi*p/10).astype(np.float32)
         w[f"{pos}_EWMA7"] = p.ewm(span=7, adjust=False).mean()
         w[f"{pos}_REPEAT"] = (p == s.shift(2)).astype(np.float32)
+        
+        # New: Modulo Arithmetic features
+        w[f"{pos}_SUM_L1_L2"] = (s.shift(1) + s.shift(2)) % 10
+        w[f"{pos}_SUM_L1_L3"] = (s.shift(1) + s.shift(3)) % 10
 
     base_cols = ["H1","H2","H3","H4","H5","H6"] if thai_6d else ["H","T","O"]
     base = w[base_cols].shift(1)
@@ -309,6 +299,7 @@ def get_features(thai_6d):
             f"{pos}_D1",f"{pos}_D2",f"{pos}_ODD",f"{pos}_HIGH",
             f"{pos}_SIN",f"{pos}_COS",f"{pos}_EWMA7",f"{pos}_REPEAT",
             f"{pos}_F10_0",f"{pos}_F10_5",f"{pos}_F20_0",f"{pos}_F20_5",
+            f"{pos}_SUM_L1_L2",f"{pos}_SUM_L1_L3", # New modulo features
         ]
     return list(dict.fromkeys(base))
 
@@ -337,7 +328,7 @@ def get_adaptive_config(n):
 # MODEL
 # ============================================================
 
-def create_model(name, cfg, system="hot"):
+def create_model(name, cfg, system="hot", categorical_mask=None):
     if system == "hot":
         if name == "ExtraTrees":
             return ExtraTreesClassifier(
@@ -355,6 +346,7 @@ def create_model(name, cfg, system="hot"):
             learning_rate=.04,
             min_samples_leaf=cfg["leaf"],
             l2_regularization=2.0,
+            categorical_features=categorical_mask, # New Categorical Integration
             random_state=42,
         )
 
@@ -374,11 +366,12 @@ def create_model(name, cfg, system="hot"):
         learning_rate=.035,
         min_samples_leaf=max(2, cfg["leaf"]),
         l2_regularization=4.0,
+        categorical_features=categorical_mask, # New Categorical Integration
         random_state=91,
     )
 
 # ============================================================
-# FEATURE SELECTION
+# FEATURE SELECTION (Speed Optimized)
 # ============================================================
 
 def select_features_once(X, y, max_features, system="hot"):
@@ -388,17 +381,13 @@ def select_features_once(X, y, max_features, system="hot"):
         return valid
 
     Xi = X[valid].replace([np.inf,-np.inf],np.nan).astype(np.float32).fillna(0)
-    selector = ExtraTreesClassifier(
-        n_estimators=10 if system=="dead" else 12,
-        max_depth=5,
-        min_samples_leaf=3,
-        max_features=.60 if system=="dead" else .70,
-        n_jobs=-1,
-        random_state=321 if system=="dead" else 123,
-    )
+    
+    # Ultra-fast Statistical Filter
     try:
+        selector = SelectKBest(score_func=f_classif, k=max_features)
         selector.fit(Xi, y)
-        order = np.argsort(selector.feature_importances_)[::-1]
+        scores = np.nan_to_num(selector.scores_)
+        order = np.argsort(scores)[::-1]
         return [valid[i] for i in order[:max_features]]
     except Exception:
         return valid[:max_features]
@@ -422,14 +411,25 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
     A = A.fillna(med).fillna(0)
     B = B.fillna(med).fillna(0)
 
+    # Plateau Time-Decay Weighting
     age = np.arange(len(A)-1, -1, -1, dtype=np.float32)
-    weights = cfg["recent_decay"] ** age
+    plateau_length = 30
+    decay_age = np.maximum(0, age - plateau_length)
+    weights = cfg["recent_decay"] ** decay_age
     weights = (weights / (weights.mean()+1e-9)).astype(np.float32)
+
+    # Create categorical mask for HistGradientBoosting
+    categorical_cols = [
+        c for c in selected 
+        if any(c.endswith(x) for x in ('_L1', '_L2', '_L3', '_L5', '_ODD', '_HIGH', '_REPEAT', '_SUM_L1_L2', '_SUM_L1_L3')) 
+        or c in ['DOW', 'DAY', 'MONTH', 'IS_WEEKEND', 'IS_MONTH_START', 'IS_MONTH_END', 'PREV_ODD', 'PREV_HIGH']
+    ]
+    categorical_mask = [selected.index(c) for c in categorical_cols] if categorical_cols else None
 
     preds = []
     for name in MODEL_NAMES:
         try:
-            model = create_model(name, cfg, system)
+            model = create_model(name, cfg, system, categorical_mask=categorical_mask)
             try:
                 model.fit(A, y_train, sample_weight=weights)
             except Exception:
@@ -454,8 +454,6 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
     else:
         ensemble = np.mean(preds, axis=0)
 
-    # Mild shrinkage toward uniform distribution.
-    # Prevents overconfident tree probabilities without expensive calibration.
     p = normalize_probability(ensemble)
     shrink = .06 if system=="hot" else .08
     p = (1-shrink)*p + shrink*.1
@@ -533,7 +531,6 @@ def dead_system(X_train,y_train,X_test,cfg,selected=None):
 def make_test_indices(n,start,points):
     if n <= start+1:
         return np.array([],dtype=int)
-    # Always emphasize the newest history; avoid dozens of expensive tests.
     count=min(points,n-start)
     return np.unique(np.linspace(start,n-1,count,dtype=int))
 
@@ -675,9 +672,9 @@ def display_dead_card(result):
 def main():
     inject_css()
 
-    st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.2 TURBO</div>',unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.2.1 TURBO</div>',unsafe_allow_html=True)
     st.markdown(
-        '<div class="subtitle">⚡ Adaptive Stability + Fast AI | 🔥 HOT TOP-3 | 🛑 COLD/DEAD TOP-7</div>',
+        '<div class="subtitle">⚡ Speed Optimized + Categorical Native | 🔥 HOT TOP-3 | 🛑 COLD/DEAD TOP-7</div>',
         unsafe_allow_html=True
     )
 
@@ -685,7 +682,7 @@ def main():
     lottery=c1.selectbox("🏷️ เลือกประเภทหวย",list(LOTTERY_SOURCES.keys()))
     selected_day=c2.selectbox("📅 วันเป้าหมาย",["อัตโนมัติ"]+DOW_NAMES)
 
-    if not st.button("⚡ เริ่มวิเคราะห์ระบบ V9.2",type="primary",use_container_width=True):
+    if not st.button("⚡ เริ่มวิเคราะห์ระบบ V9.2.1",type="primary",use_container_width=True):
         return
 
     with st.spinner("📥 กำลังดึงข้อมูลสถิติล่าสุด..."):
@@ -713,8 +710,6 @@ def main():
 
     target_date=last_date+timedelta(days=days_ahead)
 
-    # Important: placeholder result is never used as a target label.
-    # It only allows lag/rolling/calendar features for the target row.
     dummy={"Date":target_date,"Result_3D":"000","Result_2D":"00"}
     if thai_6d:
         dummy["Result_6D"]="000000"
@@ -735,7 +730,7 @@ def main():
     historical_feat=feat.iloc[:-1]
 
     for i,pos in enumerate(positions):
-        status_text.caption(f"🧠 วิเคราะห์ {POSITION_LABELS[pos]}")
+        status_text.caption(f"🧠 วิเคราะห์ {POSITION_LABELS[pos]} (Fast Mode)")
 
         hot_backtest[pos]=walk_forward_system(
             historical_feat,pos,features,cfg,"hot"
@@ -758,7 +753,7 @@ def main():
         ✅ วิเคราะห์สำเร็จ: {len(df):,} งวด<br>
         🎯 เป้าหมาย: {target_date.strftime("%d/%m/%Y")} ({lottery})<br>
         ⚙️ ExtraTrees: {cfg["trees"]} Trees
-        &nbsp;|&nbsp; 🌲 HGB: Adaptive
+        &nbsp;|&nbsp; 🌲 HGB: Adaptive (Categorical Enabled)
         &nbsp;|&nbsp; 🧠 Hot Features: {cfg["hot_features"]}
         &nbsp;|&nbsp; 🛑 Dead Features: {cfg["dead_features"]}
         </div><br>
@@ -766,7 +761,7 @@ def main():
         unsafe_allow_html=True
     )
 
-    st.markdown("### 🏆 สรุปเลขฟันธง V9.2")
+    st.markdown("### 🏆 สรุปเลขฟันธง V9.2.1")
 
     summary=[]
     for pos in positions:
@@ -825,17 +820,16 @@ def main():
                 st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 
     st.markdown("---")
-    st.markdown("### ⚙️ V9.2 System Information")
+    st.markdown("### ⚙️ V9.2.1 System Information")
 
     info=pd.DataFrame([
         {"รายการ":"Dataset","ค่า":f"{len(df):,} งวด"},
         {"รายการ":"Minimum Train","ค่า":str(cfg["min_train"])},
         {"รายการ":"Trees","ค่า":str(cfg["trees"])},
-        {"รายการ":"Depth","ค่า":str(cfg["depth"])},
-        {"รายการ":"Leaf","ค่า":str(cfg["leaf"])},
-        {"รายการ":"Recent Decay","ค่า":str(cfg["recent_decay"])},
+        {"รายการ":"Feature Selection","ค่า":"f_classif (Statistical Filter)"},
+        {"รายการ":"Recent Decay","ค่า":f"Plateau (30) + Decay ({cfg['recent_decay']})"},
         {"รายการ":"Feature Refresh","ค่า":f"ทุก {cfg['refresh_every']} checkpoints"},
-        {"รายการ":"Models","ค่า":"ExtraTrees + HistGradientBoosting"},
+        {"รายการ":"Models","ค่า":"ExtraTrees + HGB (Categorical Native)"},
         {"รายการ":"Class Weight","ค่า":"None"},
         {"รายการ":"Prediction","ค่า":"HOT TOP-3 + COLD/DEAD TOP-7"},
         {"รายการ":"Calibration","ค่า":"Mild 6–8% uniform shrinkage"},
