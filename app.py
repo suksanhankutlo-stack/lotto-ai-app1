@@ -1,12 +1,13 @@
 # ============================================================
-# 🤖 LOTTO AI PRO V9.3 ADAPTIVE STABILITY TURBO (Hot-Consensus)
+# 🤖 LOTTO AI PRO V9.4 ADAPTIVE STABILITY TURBO (Self-Correcting)
 # ============================================================
+# V9.4 improvements:
+# - Auto-Correction System: Detects if a position failed in the last 2 draws
+# - Dynamic Re-calibration: Adjusts Depth, Trees, Decay, and Seed on failure
 # V9.3 improvements:
 # - Geometric Mean Blending for strict HOT consensus
 # - Momentum Features (EMA3 vs EMA9 MACD-style)
 # - Uncertainty Warning for low Top-Gap situations
-# - Maintained V9.2.2 Pessimistic Dead-Lock
-# - Ultra-fast feature selection via f_classif
 # ============================================================
 
 import re
@@ -25,7 +26,7 @@ from sklearn.feature_selection import SelectKBest, f_classif
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
-    page_title="Lotto AI V9.3 Hot-Consensus Turbo",
+    page_title="Lotto AI V9.4 Auto-Correct",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -86,7 +87,8 @@ def inject_css():
     .dead-number { font-size:1.8rem;font-weight:800;letter-spacing:2px;text-align:center;color:#dc2626; }
     .prob-text { text-align:center;color:#475569;font-size:.9rem;line-height:1.6;margin-top:10px; }
     .prob-pill { display:inline-block;background:#e2e8f0;border-radius:20px;padding:2px 10px;margin:3px;font-weight:600;font-size:.85rem; }
-    .warning-text { color: #d97706; font-weight: 700; font-size: 0.85rem; margin-top: 5px; }
+    .warning-text { color: #d97706; font-weight: 700; font-size: 0.85rem; margin-top: 5px; text-align: center; }
+    .correction-text { color: #2563eb; font-weight: 800; font-size: 0.9rem; margin-top: 8px; text-align: center; background: #e0e7ff; padding: 4px; border-radius: 8px;}
     .confidence { text-align:center;font-size:.85rem;font-weight:700;margin-top:10px;color:#64748b; }
     div.stButton > button { min-height:50px;border-radius:10px;font-size:18px;font-weight:800; }
     </style>
@@ -216,7 +218,7 @@ def build_features(df, thai_6d=False):
         w[f"{pos}_SIN"] = np.sin(2*np.pi*p/10).astype(np.float32)
         w[f"{pos}_COS"] = np.cos(2*np.pi*p/10).astype(np.float32)
         
-        # ⭐ V9.3 New Features: MACD-Style Momentum Tracking
+        # Momentum Features
         w[f"{pos}_EWMA3"] = p.ewm(span=3, adjust=False).mean()
         w[f"{pos}_EWMA9"] = p.ewm(span=9, adjust=False).mean()
         w[f"{pos}_MACD"] = w[f"{pos}_EWMA3"] - w[f"{pos}_EWMA9"]
@@ -247,7 +249,7 @@ def get_features(thai_6d):
             f"{pos}_SIN",f"{pos}_COS",f"{pos}_REPEAT",
             f"{pos}_F10_0",f"{pos}_F10_5",f"{pos}_F20_0",f"{pos}_F20_5",
             f"{pos}_SUM_L1_L2",f"{pos}_SUM_L1_L3", 
-            f"{pos}_EWMA3", f"{pos}_EWMA9", f"{pos}_MACD", # V9.3 Momentum
+            f"{pos}_EWMA3", f"{pos}_EWMA9", f"{pos}_MACD",
         ]
     return list(dict.fromkeys(base))
 
@@ -262,21 +264,54 @@ def get_adaptive_config(n):
     return dict(min_train=50, trees=35, depth=5, leaf=3, hot_features=18, dead_features=14, backtest_points=5, recent_decay=.970, refresh_every=3)
 
 # ============================================================
+# SELF-CORRECTION (V9.4)
+# ============================================================
+
+def check_recent_failures(df_feat_hist, pos, features, cfg):
+    """
+    ตรวจสอบว่าหลักนี้ ทายผิด (หลุด Top-3) ติดต่อกัน 2 งวดล่าสุดหรือไม่
+    """
+    n = len(df_feat_hist)
+    if n < 20: return False # ข้อมูลน้อยไป ไม่ตรวจสอบ
+    
+    X = df_feat_hist[features].astype(np.float32)
+    y = df_feat_hist[pos].astype(np.int8)
+    
+    fails = 0
+    # ย้อนหลัง 2 งวดล่าสุด
+    for idx in [n-2, n-1]:
+        train_X = X.iloc[:idx]
+        train_y = y.iloc[:idx]
+        test_X = X.iloc[[idx]]
+        actual = int(y.iloc[idx])
+        
+        selected = select_features_once(train_X, train_y, cfg["hot_features"], "hot")
+        probs = model_probability(train_X, train_y, test_X, cfg, selected, "hot")
+        order = np.argsort(probs)[::-1]
+        
+        if actual not in order[:3]:
+            fails += 1
+            
+    return fails == 2
+
+# ============================================================
 # MODEL
 # ============================================================
 
 def create_model(name, cfg, system="hot", categorical_mask=None):
+    rs_offset = cfg.get("random_seed_offset", 0) # สำหรับปรับจูนตอนแก้ไขตัวเอง
+    
     if system == "hot":
         if name == "ExtraTrees":
-            return ExtraTreesClassifier(n_estimators=cfg["trees"], max_depth=cfg["depth"], min_samples_leaf=cfg["leaf"], max_features=.70, class_weight=None, n_jobs=-1, random_state=42)
-        return HistGradientBoostingClassifier(max_iter=max(25, int(cfg["trees"]*.65)), max_leaf_nodes=15, learning_rate=.04, min_samples_leaf=cfg["leaf"], l2_regularization=2.0, categorical_features=categorical_mask, random_state=42)
+            return ExtraTreesClassifier(n_estimators=cfg["trees"], max_depth=cfg["depth"], min_samples_leaf=cfg["leaf"], max_features=.70, class_weight=None, n_jobs=-1, random_state=42 + rs_offset)
+        return HistGradientBoostingClassifier(max_iter=max(25, int(cfg["trees"]*.65)), max_leaf_nodes=15, learning_rate=.04, min_samples_leaf=cfg["leaf"], l2_regularization=2.0, categorical_features=categorical_mask, random_state=42 + rs_offset)
 
     if name == "ExtraTrees":
-        return ExtraTreesClassifier(n_estimators=max(25, int(cfg["trees"]*.80)), max_depth=max(4, cfg["depth"]-1), min_samples_leaf=max(2, cfg["leaf"]), max_features=.45, class_weight=None, n_jobs=-1, random_state=91)
-    return HistGradientBoostingClassifier(max_iter=max(20, int(cfg["trees"]*.50)), max_leaf_nodes=9, learning_rate=.035, min_samples_leaf=max(2, cfg["leaf"]), l2_regularization=4.0, categorical_features=categorical_mask, random_state=91)
+        return ExtraTreesClassifier(n_estimators=max(25, int(cfg["trees"]*.80)), max_depth=max(4, cfg["depth"]-1), min_samples_leaf=max(2, cfg["leaf"]), max_features=.45, class_weight=None, n_jobs=-1, random_state=91 + rs_offset)
+    return HistGradientBoostingClassifier(max_iter=max(20, int(cfg["trees"]*.50)), max_leaf_nodes=9, learning_rate=.035, min_samples_leaf=max(2, cfg["leaf"]), l2_regularization=4.0, categorical_features=categorical_mask, random_state=91 + rs_offset)
 
 # ============================================================
-# FEATURE SELECTION (Speed Optimized)
+# FEATURE SELECTION
 # ============================================================
 
 def select_features_once(X, y, max_features, system="hot"):
@@ -313,7 +348,6 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
     A = A.fillna(med).fillna(0)
     B = B.fillna(med).fillna(0)
 
-    # Plateau Time-Decay
     age = np.arange(len(A)-1, -1, -1, dtype=np.float32)
     decay_age = np.maximum(0, age - 30)
     weights = cfg["recent_decay"] ** decay_age
@@ -346,15 +380,11 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
 
     if len(preds) == 2:
         if system == "hot":
-            # ⭐ V9.3 HOT STRICT CONSENSUS (Geometric Mean Blend)
-            # ป้องกันโมเดลใดโมเดลหนึ่ง overconfident ต้องเห็นพ้องทั้งคู่ถึงจะได้คะแนนสูง
             p1, p2 = np.clip(preds[0], 1e-5, 1.0), np.clip(preds[1], 1e-5, 1.0)
             geo_mean = np.sqrt(p1 * p2)
             ari_mean = (p1 * 0.55) + (p2 * 0.45)
-            # ผสม Geometric (70%) เพื่อบังคับความเห็นพ้อง และ Arithmetic (30%) เพื่อเกลี่ยฐาน
             ensemble = (geo_mean * 0.70) + (ari_mean * 0.30)
         else:
-            # ⭐ V9.2.2 DEAD PESSIMISTIC ENSEMBLE
             ensemble = np.maximum(preds[0], preds[1])
     else:
         ensemble = np.mean(preds, axis=0)
@@ -365,7 +395,7 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
     return normalize_probability(p)
 
 # ============================================================
-# HOT (Optimized V9.3)
+# HOT
 # ============================================================
 
 def probability_concentration(p):
@@ -388,7 +418,7 @@ def hot_system(X_train, y_train, X_test, cfg, selected=None):
         "top3": float(p[order[:3]].sum()),
         "top_gap": top_gap,
         "concentration": probability_concentration(p),
-        "is_unstable": top_gap < 0.015, # เตือนถ้าระยะห่างอันดับ 1 และ 2 น้อยกว่า 1.5%
+        "is_unstable": top_gap < 0.015,
         "selected_features": selected,
     }
 
@@ -506,15 +536,17 @@ def final_prediction(df_feat,pos,features,cfg):
 # DISPLAY
 # ============================================================
 
-def display_hot_card(result):
+def display_hot_card(result, is_corrected=False):
     data = result["hot"]["hot"]
     nums = " - ".join(str(n) for n,_ in data)
     pills = "".join(f'<span class="prob-pill">{n}: {p*100:.1f}%</span>' for n,p in data)
     h = result["hot"]
     
     warning_html = ""
-    if h["is_unstable"]:
-        warning_html = '<div class="warning-text">⚠️ สถิติเบียดสูสี ระวังพลิก! (Top-Gap &lt; 1.5%)</div>'
+    if is_corrected:
+        warning_html += '<div class="correction-text">🔄 ระบบเปิดโหมดแก้ไขตัวเอง (พลาด 2 งวดติด)</div>'
+    elif h["is_unstable"]:
+        warning_html += '<div class="warning-text">⚠️ สถิติเบียดสูสี ระวังพลิก! (Top-Gap &lt; 1.5%)</div>'
         
     html=f"""
     <div class="hot-card">
@@ -552,14 +584,14 @@ def display_dead_card(result):
 
 def main():
     inject_css()
-    st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.3 TURBO</div>',unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">⚡ Hot-Consensus & Dead-Lock | 🔥 HOT TOP-3 | 🛑 SAFE DEAD TOP-7</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.4 AUTO-CORRECT</div>',unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">⚡ Hot-Consensus & Self-Healing Engine | 🔥 HOT TOP-3 | 🛑 DEAD TOP-7</div>', unsafe_allow_html=True)
 
     c1,c2=st.columns(2)
     lottery=c1.selectbox("🏷️ เลือกประเภทหวย",list(LOTTERY_SOURCES.keys()))
     selected_day=c2.selectbox("📅 วันเป้าหมาย",["อัตโนมัติ"]+DOW_NAMES)
 
-    if not st.button("⚡ เริ่มวิเคราะห์ระบบ V9.3",type="primary",use_container_width=True): return
+    if not st.button("⚡ เริ่มวิเคราะห์ระบบ V9.4",type="primary",use_container_width=True): return
 
     with st.spinner("📥 กำลังดึงข้อมูลสถิติล่าสุด..."):
         try: df=fetch_lottery_data(LOTTERY_SOURCES[lottery])
@@ -585,20 +617,35 @@ def main():
     if thai_6d: dummy["Result_6D"]="000000"
     ext=pd.concat([df,pd.DataFrame([dummy])],ignore_index=True)
 
-    with st.spinner("⚙️ กำลังสร้าง Leakage-Safe & Momentum Features..."):
+    with st.spinner("⚙️ กำลังสร้าง Features และทดสอบโมเดล..."):
         feat=build_features(ext,thai_6d)
         features=get_features(thai_6d)
-        cfg=get_adaptive_config(len(df))
+        base_cfg=get_adaptive_config(len(df))
 
     final, hot_backtest, dead_backtest = {}, {}, {}
+    is_corrected = {}
     progress, status_text = st.progress(0), st.empty()
-    historical_feat=feat.iloc[:-1]
+    historical_feat=feat.iloc[:-1] # ไม่รวม Dummy ล่าสุด
 
     for i,pos in enumerate(positions):
-        status_text.caption(f"🧠 วิเคราะห์ {POSITION_LABELS[pos]}")
-        hot_backtest[pos]=walk_forward_system(historical_feat,pos,features,cfg,"hot")
-        dead_backtest[pos]=walk_forward_system(historical_feat,pos,features,cfg,"dead")
-        final[pos]=final_prediction(feat,pos,features,cfg)
+        status_text.caption(f"🧠 วิเคราะห์และตรวจสอบ {POSITION_LABELS[pos]}")
+        
+        pos_cfg = base_cfg.copy()
+        pos_cfg["random_seed_offset"] = 0
+        
+        # 📌 ระบบตรวจสอบข้อผิดพลาดและแก้ไขตัวเอง (Self-Correction)
+        if check_recent_failures(historical_feat, pos, features, pos_cfg):
+            pos_cfg["trees"] = int(pos_cfg["trees"] * 1.5)  # เพิ่มต้นไม้
+            pos_cfg["depth"] = pos_cfg["depth"] + 2         # เพิ่มความลึก
+            pos_cfg["recent_decay"] = 0.85                  # เน้นแก้ไขข้อมูลพลาดล่าสุดให้มากขึ้น
+            pos_cfg["random_seed_offset"] = 777             # สลับ Seed เปลี่ยนทางสร้างโมเดล
+            is_corrected[pos] = True
+        else:
+            is_corrected[pos] = False
+            
+        hot_backtest[pos]=walk_forward_system(historical_feat,pos,features,pos_cfg,"hot")
+        dead_backtest[pos]=walk_forward_system(historical_feat,pos,features,pos_cfg,"dead")
+        final[pos]=final_prediction(feat,pos,features,pos_cfg)
         progress.progress(int((i+1)/len(positions)*100))
 
     progress.empty()
@@ -609,20 +656,22 @@ def main():
         <div class="status-card">
         ✅ วิเคราะห์สำเร็จ: {len(df):,} งวด<br>
         🎯 เป้าหมาย: {target_date.strftime("%d/%m/%Y")} ({lottery})<br>
-        ⚙️ โมเดลเด่น: Geometric Consensus (ต้องเห็นพ้องเท่านั้น)<br>
+        ⚙️ โมเดลเด่น: Geometric Consensus & Auto-Correction (ซ่อมแซมตัวเองอัตโนมัติ)<br>
         ⚙️ โมเดลดับ: Pessimistic Ensemble (กันเหนียวสูงสุด)
         </div><br>
         """, unsafe_allow_html=True
     )
 
-    st.markdown("### 🏆 สรุปเลขฟันธง V9.3")
+    st.markdown("### 🏆 สรุปเลขฟันธง V9.4")
     summary=[]
     for pos in positions:
         hot=final[pos]["hot"]["hot"]
         dead=final[pos]["dead"]["dead"]
         
         warn_flag = "⚠️" if final[pos]["hot"]["is_unstable"] else "✅"
-        
+        if is_corrected[pos]:
+            warn_flag = "🔄 ซ่อมแซมตัวเอง"
+            
         summary.append({
             "ตำแหน่ง":POSITION_LABELS[pos],
             "สถานะ": warn_flag,
@@ -642,7 +691,7 @@ def main():
         for pos in positions:
             st.markdown(f'<div class="position-title">{POSITION_LABELS[pos]}</div>', unsafe_allow_html=True)
             a,b=st.columns(2)
-            with a: display_hot_card(final[pos])
+            with a: display_hot_card(final[pos], is_corrected[pos])
             with b: display_dead_card(final[pos])
 
     with t2:
@@ -665,8 +714,9 @@ def main():
                 st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 
     st.markdown("---")
-    st.markdown("### ⚙️ V9.3 System Information")
+    st.markdown("### ⚙️ V9.4 System Information")
     info=pd.DataFrame([
+        {"รายการ":"Auto-Correction System (ใหม่)","ค่า":"หลักที่ทายผิด Top-3 ติดกัน 2 งวด ระบบจะปรับจูนโมเดลตัวเองทันที (Depth, Trees, Decay, Seed)"},
         {"รายการ":"Hot System Engine","ค่า":"Geometric Consensus (ต้องเห็นพ้อง 100%)"},
         {"รายการ":"Dead System Engine","ค่า":"Pessimistic Maximum (ต้องห่วยทั้งคู่)"},
         {"รายการ":"New Features","ค่า":"MACD-Style Momentum (EMA3 vs EMA9)"},
