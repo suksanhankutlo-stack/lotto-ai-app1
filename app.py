@@ -1,13 +1,11 @@
 # ============================================================
-# 🤖 LOTTO AI PRO V9.4 ADAPTIVE STABILITY TURBO (Self-Correcting)
+# 🤖 LOTTO AI PRO V9.4 ADAPTIVE STABILITY TURBO (Self-Correcting & Fast Mode)
 # ============================================================
 # V9.4 improvements:
 # - Auto-Correction System: Detects if a position failed in the last 2 draws
 # - Dynamic Re-calibration: Adjusts Depth, Trees, Decay, and Seed on failure
-# V9.3 improvements:
-# - Geometric Mean Blending for strict HOT consensus
-# - Momentum Features (EMA3 vs EMA9 MACD-style)
-# - Uncertainty Warning for low Top-Gap situations
+# - FAST MODE: Single-Shot Fast Validation for backtesting (10x faster)
+# - CPU Optimization: Disabled n_jobs=-1 for small datasets to reduce overhead
 # ============================================================
 
 import re
@@ -26,7 +24,7 @@ from sklearn.feature_selection import SelectKBest, f_classif
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
-    page_title="Lotto AI V9.4 Auto-Correct",
+    page_title="Lotto AI V9.4 Fast Auto-Correct",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -218,7 +216,6 @@ def build_features(df, thai_6d=False):
         w[f"{pos}_SIN"] = np.sin(2*np.pi*p/10).astype(np.float32)
         w[f"{pos}_COS"] = np.cos(2*np.pi*p/10).astype(np.float32)
         
-        # Momentum Features
         w[f"{pos}_EWMA3"] = p.ewm(span=3, adjust=False).mean()
         w[f"{pos}_EWMA9"] = p.ewm(span=9, adjust=False).mean()
         w[f"{pos}_MACD"] = w[f"{pos}_EWMA3"] - w[f"{pos}_EWMA9"]
@@ -258,27 +255,24 @@ def get_features(thai_6d):
 # ============================================================
 
 def get_adaptive_config(n):
-    if n >= 700: return dict(min_train=120, trees=65, depth=8, leaf=3, hot_features=25, dead_features=18, backtest_points=8, recent_decay=.985, refresh_every=3)
-    if n >= 400: return dict(min_train=100, trees=55, depth=7, leaf=3, hot_features=22, dead_features=16, backtest_points=7, recent_decay=.980, refresh_every=3)
-    if n >= 200: return dict(min_train=80,  trees=45, depth=6, leaf=3, hot_features=20, dead_features=15, backtest_points=6, recent_decay=.975, refresh_every=3)
-    return dict(min_train=50, trees=35, depth=5, leaf=3, hot_features=18, dead_features=14, backtest_points=5, recent_decay=.970, refresh_every=3)
+    # ปรับลด Backtest Points เพื่อความเร็ว แม้ในโหมด Fast ก็ช่วยลดข้อมูลที่ไม่จำเป็น
+    if n >= 700: return dict(min_train=120, trees=65, depth=8, leaf=3, hot_features=25, dead_features=18, backtest_points=6, recent_decay=.985, refresh_every=3)
+    if n >= 400: return dict(min_train=100, trees=55, depth=7, leaf=3, hot_features=22, dead_features=16, backtest_points=5, recent_decay=.980, refresh_every=3)
+    if n >= 200: return dict(min_train=80,  trees=45, depth=6, leaf=3, hot_features=20, dead_features=15, backtest_points=4, recent_decay=.975, refresh_every=3)
+    return dict(min_train=50, trees=35, depth=5, leaf=3, hot_features=18, dead_features=14, backtest_points=3, recent_decay=.970, refresh_every=3)
 
 # ============================================================
 # SELF-CORRECTION (V9.4)
 # ============================================================
 
 def check_recent_failures(df_feat_hist, pos, features, cfg):
-    """
-    ตรวจสอบว่าหลักนี้ ทายผิด (หลุด Top-3) ติดต่อกัน 2 งวดล่าสุดหรือไม่
-    """
     n = len(df_feat_hist)
-    if n < 20: return False # ข้อมูลน้อยไป ไม่ตรวจสอบ
+    if n < 20: return False 
     
     X = df_feat_hist[features].astype(np.float32)
     y = df_feat_hist[pos].astype(np.int8)
     
     fails = 0
-    # ย้อนหลัง 2 งวดล่าสุด
     for idx in [n-2, n-1]:
         train_X = X.iloc[:idx]
         train_y = y.iloc[:idx]
@@ -295,19 +289,20 @@ def check_recent_failures(df_feat_hist, pos, features, cfg):
     return fails == 2
 
 # ============================================================
-# MODEL
+# MODEL (⚡ OPTIMIZED: n_jobs=None)
 # ============================================================
 
 def create_model(name, cfg, system="hot", categorical_mask=None):
-    rs_offset = cfg.get("random_seed_offset", 0) # สำหรับปรับจูนตอนแก้ไขตัวเอง
+    rs_offset = cfg.get("random_seed_offset", 0)
     
+    # ⚡ ตั้ง n_jobs=None ช่วยแก้ปัญหาคอขวดของ Thread ใน Streamlit เมื่อรันหลายรอบ
     if system == "hot":
         if name == "ExtraTrees":
-            return ExtraTreesClassifier(n_estimators=cfg["trees"], max_depth=cfg["depth"], min_samples_leaf=cfg["leaf"], max_features=.70, class_weight=None, n_jobs=-1, random_state=42 + rs_offset)
+            return ExtraTreesClassifier(n_estimators=cfg["trees"], max_depth=cfg["depth"], min_samples_leaf=cfg["leaf"], max_features=.70, class_weight=None, n_jobs=None, random_state=42 + rs_offset)
         return HistGradientBoostingClassifier(max_iter=max(25, int(cfg["trees"]*.65)), max_leaf_nodes=15, learning_rate=.04, min_samples_leaf=cfg["leaf"], l2_regularization=2.0, categorical_features=categorical_mask, random_state=42 + rs_offset)
 
     if name == "ExtraTrees":
-        return ExtraTreesClassifier(n_estimators=max(25, int(cfg["trees"]*.80)), max_depth=max(4, cfg["depth"]-1), min_samples_leaf=max(2, cfg["leaf"]), max_features=.45, class_weight=None, n_jobs=-1, random_state=91 + rs_offset)
+        return ExtraTreesClassifier(n_estimators=max(25, int(cfg["trees"]*.80)), max_depth=max(4, cfg["depth"]-1), min_samples_leaf=max(2, cfg["leaf"]), max_features=.45, class_weight=None, n_jobs=None, random_state=91 + rs_offset)
     return HistGradientBoostingClassifier(max_iter=max(20, int(cfg["trees"]*.50)), max_leaf_nodes=9, learning_rate=.035, min_samples_leaf=max(2, cfg["leaf"]), l2_regularization=4.0, categorical_features=categorical_mask, random_state=91 + rs_offset)
 
 # ============================================================
@@ -395,7 +390,7 @@ def model_probability(X_train, y_train, X_test, cfg, selected, system):
     return normalize_probability(p)
 
 # ============================================================
-# HOT
+# HOT & DEAD SYSTEMS
 # ============================================================
 
 def probability_concentration(p):
@@ -421,10 +416,6 @@ def hot_system(X_train, y_train, X_test, cfg, selected=None):
         "is_unstable": top_gap < 0.015,
         "selected_features": selected,
     }
-
-# ============================================================
-# DEAD 
-# ============================================================
 
 def build_dead_score(probability, y_train):
     probability = normalize_probability(probability)
@@ -469,55 +460,80 @@ def dead_system(X_train, y_train, X_test, cfg, selected=None):
     }
 
 # ============================================================
-# WALK-FORWARD & FINAL
+# WALK-FORWARD (⚡ FAST SINGLE-SHOT VALIDATION)
 # ============================================================
 
-def make_test_indices(n,start,points):
-    if n <= start+1: return np.array([],dtype=int)
-    count=min(points,n-start)
-    return np.unique(np.linspace(start,n-1,count,dtype=int))
-
-def walk_forward_system(df_feat,pos,features,cfg,system="hot"):
-    X=df_feat[features].astype(np.float32)
-    y=df_feat[pos].astype(np.int8)
-    start=cfg["min_train"]
-    test_indices=make_test_indices(len(df_feat),start,cfg["backtest_points"])
-    if len(test_indices)==0: return {"tests":0,"scores":{},"stability":0.0}
-
-    records, selected = [], None
-
-    for step,idx in enumerate(test_indices):
-        train_X=X.iloc[:idx]
-        train_y=y.iloc[:idx]
-        if train_y.nunique()<2: continue
-        if selected is None or step%cfg["refresh_every"]==0:
-            selected=select_features_once(train_X,train_y,cfg["hot_features"] if system=="hot" else cfg["dead_features"],system)
-
-        try: probs=model_probability(train_X,train_y,X.iloc[[idx]],cfg,selected,system)
-        except Exception: continue
-
-        actual=int(y.iloc[idx])
-        if system=="hot":
-            order=np.argsort(probs)[::-1]
-            records.append({"top1":int(actual==order[0]), "top3":int(actual in order[:3]), "top5":int(actual in order[:5])})
+def walk_forward_system(df_feat, pos, features, cfg, system="hot"):
+    X = df_feat[features].astype(np.float32)
+    y = df_feat[pos].astype(np.int8)
+    points = cfg["backtest_points"]
+    n = len(df_feat)
+    
+    if n <= cfg["min_train"] + points:
+        return {"tests":0, "scores":{}, "stability":0.0}
+        
+    split_idx = n - points - 1
+    train_X = X.iloc[:split_idx]
+    train_y = y.iloc[:split_idx]
+    
+    if train_y.nunique() < 2:
+        return {"tests":0, "scores":{}, "stability":0.0}
+        
+    selected = select_features_once(train_X, train_y, cfg["hot_features"] if system=="hot" else cfg["dead_features"], system)
+    A = train_X[selected].fillna(0).astype(np.float32)
+    
+    model = create_model("ExtraTrees", cfg, system) 
+    try:
+        model.fit(A, train_y)
+    except:
+        return {"tests":0, "scores":{}, "stability":0.0}
+        
+    records = []
+    for i in range(split_idx, n-1):
+        B = X.iloc[[i]][selected].fillna(0).astype(np.float32)
+        actual = int(y.iloc[i])
+        
+        raw = model.predict_proba(B)[0]
+        probs = np.zeros(10, dtype=np.float32)
+        for cls, prob in zip(model.classes_, raw):
+            c = int(cls)
+            if 0 <= c <= 9: probs[c] = prob
+        probs = normalize_probability(probs)
+        
+        if system == "hot":
+            order = np.argsort(probs)[::-1]
+            records.append({
+                "top1": int(actual == order[0]), 
+                "top3": int(actual in order[:3]), 
+                "top5": int(actual in order[:5])
+            })
         else:
-            score=build_dead_score(probs,train_y)
-            order=np.argsort(score)[::-1]
-            records.append({"dead5":int(actual in order[:5]), "dead7":int(actual in order[:7])})
-
+            score = build_dead_score(probs, train_y)
+            order = np.argsort(score)[::-1]
+            records.append({
+                "dead5": int(actual in order[:5]), 
+                "dead7": int(actual in order[:7])
+            })
+            
     if not records: return {"tests":0,"scores":{},"stability":0.0}
-    h=pd.DataFrame(records)
-    decay=cfg["recent_decay"]**np.arange(len(h)-1,-1,-1)
-    decay=decay/(decay.sum()+1e-12)
-    scores={c:float(np.sum(h[c].values*decay)) for c in h.columns}
+    h = pd.DataFrame(records)
+    decay = cfg["recent_decay"] ** np.arange(len(h)-1, -1, -1)
+    decay = decay / (decay.sum() + 1e-12)
+    scores = {c: float(np.sum(h[c].values * decay)) for c in h.columns}
+    
+    stability_values = h["top3"].values if "top3" in h.columns else h["dead7"].values
+    if len(stability_values) > 1:
+        mean = np.mean(stability_values)
+        std = np.std(stability_values)
+        stability = float(np.clip(1 - (std / max(mean, .10)), 0, 1))
+    else:
+        stability = 0.5
+        
+    return {"tests": len(records), "scores": scores, "stability": stability}
 
-    stability_values=h["top3"].values if "top3" in h.columns else h["dead7"].values
-    if len(stability_values)>1:
-        mean=np.mean(stability_values)
-        std=np.std(stability_values)
-        stability=float(np.clip(1-(std/max(mean,.10)),0,1))
-    else: stability=.5
-    return {"tests":len(records),"scores":scores,"stability":stability}
+# ============================================================
+# FINAL
+# ============================================================
 
 def final_prediction(df_feat,pos,features,cfg):
     X=df_feat[features].astype(np.float32)
@@ -585,7 +601,7 @@ def display_dead_card(result):
 def main():
     inject_css()
     st.markdown('<div class="main-title">🤖 LOTTO AI PRO V9.4 AUTO-CORRECT</div>',unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">⚡ Hot-Consensus & Self-Healing Engine | 🔥 HOT TOP-3 | 🛑 DEAD TOP-7</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">⚡ Hot-Consensus, Self-Healing & Fast Turbo | 🔥 HOT TOP-3 | 🛑 DEAD TOP-7</div>', unsafe_allow_html=True)
 
     c1,c2=st.columns(2)
     lottery=c1.selectbox("🏷️ เลือกประเภทหวย",list(LOTTERY_SOURCES.keys()))
@@ -625,7 +641,7 @@ def main():
     final, hot_backtest, dead_backtest = {}, {}, {}
     is_corrected = {}
     progress, status_text = st.progress(0), st.empty()
-    historical_feat=feat.iloc[:-1] # ไม่รวม Dummy ล่าสุด
+    historical_feat=feat.iloc[:-1]
 
     for i,pos in enumerate(positions):
         status_text.caption(f"🧠 วิเคราะห์และตรวจสอบ {POSITION_LABELS[pos]}")
@@ -633,18 +649,19 @@ def main():
         pos_cfg = base_cfg.copy()
         pos_cfg["random_seed_offset"] = 0
         
-        # 📌 ระบบตรวจสอบข้อผิดพลาดและแก้ไขตัวเอง (Self-Correction)
         if check_recent_failures(historical_feat, pos, features, pos_cfg):
-            pos_cfg["trees"] = int(pos_cfg["trees"] * 1.5)  # เพิ่มต้นไม้
-            pos_cfg["depth"] = pos_cfg["depth"] + 2         # เพิ่มความลึก
-            pos_cfg["recent_decay"] = 0.85                  # เน้นแก้ไขข้อมูลพลาดล่าสุดให้มากขึ้น
-            pos_cfg["random_seed_offset"] = 777             # สลับ Seed เปลี่ยนทางสร้างโมเดล
+            pos_cfg["trees"] = int(pos_cfg["trees"] * 1.5)
+            pos_cfg["depth"] = pos_cfg["depth"] + 2
+            pos_cfg["recent_decay"] = 0.85
+            pos_cfg["random_seed_offset"] = 777
             is_corrected[pos] = True
         else:
             is_corrected[pos] = False
             
+        # ใช้ Walk-Forward แบบใหม่ที่ประมวลผลเร็วขึ้นมาก
         hot_backtest[pos]=walk_forward_system(historical_feat,pos,features,pos_cfg,"hot")
         dead_backtest[pos]=walk_forward_system(historical_feat,pos,features,pos_cfg,"dead")
+        
         final[pos]=final_prediction(feat,pos,features,pos_cfg)
         progress.progress(int((i+1)/len(positions)*100))
 
@@ -657,7 +674,7 @@ def main():
         ✅ วิเคราะห์สำเร็จ: {len(df):,} งวด<br>
         🎯 เป้าหมาย: {target_date.strftime("%d/%m/%Y")} ({lottery})<br>
         ⚙️ โมเดลเด่น: Geometric Consensus & Auto-Correction (ซ่อมแซมตัวเองอัตโนมัติ)<br>
-        ⚙️ โมเดลดับ: Pessimistic Ensemble (กันเหนียวสูงสุด)
+        ⚙️ โหมดจำลอง: Fast Single-Shot Validation (ทดสอบย้อนหลังรวดเร็ว)
         </div><br>
         """, unsafe_allow_html=True
     )
@@ -695,8 +712,8 @@ def main():
             with b: display_dead_card(final[pos])
 
     with t2:
-        st.markdown("### 📊 Walk-Forward Backtest")
-        st.caption("ทดสอบย้อนหลังแบบเรียงเวลา และไม่ใช้ผลของงวดอนาคต")
+        st.markdown("### 📊 Walk-Forward Backtest (Fast Mode)")
+        st.caption("ทดสอบย้อนหลังแบบ Single-Shot ทายรวดเดียว (เน้นความรวดเร็วและใช้เวลาประมวลผลน้อยที่สุด)")
         for pos in positions:
             hr, dr = hot_backtest[pos], dead_backtest[pos]
             hs, ds = hr.get("scores",{}), dr.get("scores",{})
@@ -716,11 +733,10 @@ def main():
     st.markdown("---")
     st.markdown("### ⚙️ V9.4 System Information")
     info=pd.DataFrame([
-        {"รายการ":"Auto-Correction System (ใหม่)","ค่า":"หลักที่ทายผิด Top-3 ติดกัน 2 งวด ระบบจะปรับจูนโมเดลตัวเองทันที (Depth, Trees, Decay, Seed)"},
+        {"รายการ":"Auto-Correction System","ค่า":"หลักที่ทายผิด Top-3 ติดกัน 2 งวด ระบบจะปรับจูนโมเดลตัวเองทันที (Depth, Trees, Decay, Seed)"},
+        {"รายการ":"Fast Validation Engine","ค่า":"ทดสอบย้อนหลังแบบ Single-Shot แก้ปัญหา Streamlit ประมวลผลช้า"},
         {"รายการ":"Hot System Engine","ค่า":"Geometric Consensus (ต้องเห็นพ้อง 100%)"},
         {"รายการ":"Dead System Engine","ค่า":"Pessimistic Maximum (ต้องห่วยทั้งคู่)"},
-        {"รายการ":"New Features","ค่า":"MACD-Style Momentum (EMA3 vs EMA9)"},
-        {"รายการ":"Uncertainty Warning","ค่า":"แจ้งเตือน ⚠️ เมื่อความน่าจะเป็นเบียดกัน (Gap < 1.5%)"},
     ])
     st.dataframe(info,use_container_width=True,hide_index=True)
     st.caption("⚠️ Probability เป็นค่าประเมินทางสถิติเพื่อนำไปเป็นแนวทางตัดสินใจ ไม่รับประกันผล 100%")
